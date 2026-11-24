@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Stop the tmux acceptance worker's server and remove its socket at shutdown, so an interrupted run no longer leaves orphaned tmux servers and dead socket files behind.
+
 ## 0.79.1 - 2026-11-24
 
 - Remove an unused `noqa: DTZ005` directive on the session uid line: ruff 0.17.5 enables RUF100 by default and DTZ005 is not in the selected rule set, so the directive was flagged. The uid still uses local wall time; no behavior change.

@@ -78,6 +78,19 @@ def tmux(*args: str, check: bool = True) -> str:
     return result.stdout
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _stop_worker_tmux_server():
+    """Backstop: per-test teardown kills its sessions and tmux stops a server once its last session
+    dies, but an interrupted run -- or a pane whose app never exited -- can leave the worker's server
+    and socket file behind. Stop the whole server and remove the socket at worker shutdown so repeated
+    runs do not accumulate orphaned servers and dead sockets."""
+    yield
+    if shutil.which("tmux") is not None:
+        tmux("kill-server", check=False)
+    socket = Path(os.environ.get("TMUX_TMPDIR", "/tmp")) / f"tmux-{os.getuid()}" / SOCKET
+    socket.unlink(missing_ok=True)
+
+
 @pytest.fixture(params=["on", "off"], ids=["alt-screen-on", "alt-screen-off"])
 def panes(tmp_path, request):
     """Hand out fresh tmux panes, each torn down at the end of the test.
