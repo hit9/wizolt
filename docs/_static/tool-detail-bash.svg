@@ -32,15 +32,15 @@
         font-family: arial;
     }
 
-    .tool-detail-bash-r1 { fill: #ffac54;font-weight: bold }
-.tool-detail-bash-r2 { fill: #eddfba }
-.tool-detail-bash-r3 { fill: #beaf93 }
+    .tool-detail-bash-r1 { fill: #ffd080;font-weight: bold }
+.tool-detail-bash-r2 { fill: #f3e6c8 }
+.tool-detail-bash-r3 { fill: #ccbea6 }
 .tool-detail-bash-r4 { fill: #abb2bf }
 .tool-detail-bash-r5 { fill: #665c54 }
-.tool-detail-bash-r6 { fill: #beaf93;font-weight: bold }
-.tool-detail-bash-r7 { fill: #c0c03b;font-weight: bold }
-.tool-detail-bash-r8 { fill: #d3869b;font-weight: bold }
-.tool-detail-bash-r9 { fill: #928374 }
+.tool-detail-bash-r6 { fill: #ccbea6;font-weight: bold }
+.tool-detail-bash-r7 { fill: #d6e05d;font-weight: bold }
+.tool-detail-bash-r8 { fill: #ffbbe5;font-weight: bold }
+.tool-detail-bash-r9 { fill: #a59785 }
 .tool-detail-bash-r10 { fill: #dddddd }
     </style>
 
@@ -103,7 +103,7 @@
             </g>
         
     <g transform="translate(9, 41)" clip-path="url(#tool-detail-bash-clip-terminal)">
-    <rect fill="#42382d" x="0" y="1.5" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#42382d" x="97.6" y="1.5" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#42382d" x="195.2" y="1.5" width="146.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#42382d" x="341.6" y="1.5" width="585.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#42382d" x="48.8" y="147.9" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#42382d" x="85.4" y="147.9" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#42382d" x="109.8" y="147.9" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#42382d" x="122" y="147.9" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#42382d" x="158.6" y="147.9" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#42382d" x="170.8" y="147.9" width="73.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#42382d" x="244" y="147.9" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#42382d" x="256.2" y="147.9" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#42382d" x="280.6" y="147.9" width="597.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#42382d" x="48.8" y="172.3" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#42382d" x="85.4" y="172.3" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#42382d" x="122" y="172.3" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#42382d" x="134.2" y="172.3" width="48.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#42382d" x="183" y="172.3" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#42382d" x="195.2" y="172.3" width="85.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#42382d" x="280.6" y="172.3" width="597.8" height="24.65" shape-rendering="crispEdges"/>
+    <rect fill="#423c33" x="0" y="1.5" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#423c33" x="97.6" y="1.5" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#423c33" x="195.2" y="1.5" width="146.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#423c33" x="341.6" y="1.5" width="585.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#423c33" x="48.8" y="147.9" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#423c33" x="85.4" y="147.9" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#423c33" x="109.8" y="147.9" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#423c33" x="122" y="147.9" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#423c33" x="158.6" y="147.9" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#423c33" x="170.8" y="147.9" width="73.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#423c33" x="244" y="147.9" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#423c33" x="256.2" y="147.9" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#423c33" x="280.6" y="147.9" width="597.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#423c33" x="48.8" y="172.3" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#423c33" x="85.4" y="172.3" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#423c33" x="122" y="172.3" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#423c33" x="134.2" y="172.3" width="48.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#423c33" x="183" y="172.3" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#423c33" x="195.2" y="172.3" width="85.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#423c33" x="280.6" y="172.3" width="597.8" height="24.65" shape-rendering="crispEdges"/>
     <g class="tool-detail-bash-matrix">
     <text class="tool-detail-bash-r1" x="0" y="20" textLength="97.6" clip-path="url(#tool-detail-bash-line-0)">&#160;&#160;Output</text><text class="tool-detail-bash-r2" x="97.6" y="20" textLength="97.6" clip-path="url(#tool-detail-bash-line-0)">&#160;·&#160;tr.18</text><text class="tool-detail-bash-r3" x="195.2" y="20" textLength="146.4" clip-path="url(#tool-detail-bash-line-0)">&#160;·&#160;read-only</text><text class="tool-detail-bash-r4" x="927.2" y="20" textLength="12.2" clip-path="url(#tool-detail-bash-line-0)">
 </text><text class="tool-detail-bash-r5" x="0" y="44.4" textLength="902.8" clip-path="url(#tool-detail-bash-line-1)">&#160;&#160;────────────────────────────────────────────────────────────────────────</text><text class="tool-detail-bash-r4" x="927.2" y="44.4" textLength="12.2" clip-path="url(#tool-detail-bash-line-1)">

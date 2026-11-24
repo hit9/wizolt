@@ -139,7 +139,7 @@ def test_paths_have_their_own_ink_and_live_previews_sit_below_them(name):
     assert colors["syntax_ident"] != colors["accent"]
     path_contrast = contrast(colors["syntax_ident"], background)
     assert path_contrast >= 4.5
-    assert 3 <= contrast(colors["preview"], background) < path_contrast
+    assert 4.5 <= contrast(colors["preview"], background) < path_contrast
 
 
 def test_builtin_selections_and_named_ui_labels_have_readable_contrast():
@@ -1223,7 +1223,7 @@ def test_shell_preview_is_neutral_and_quieter_than_the_command(name):
     gray = palette.colors["shell_output"]
     assert gray[1:3] == gray[3:5] == gray[5:7]
     for role in ("shell_command", "shell_string", "shell_variable", "text"):
-        assert 4.5 <= contrast(gray, bg) < contrast(palette.colors[role], bg)
+        assert (7 if palette.appearance == "dark" else 4.5) <= contrast(gray, bg) < contrast(palette.colors[role], bg)
 
 
 @pytest.mark.parametrize("name", Theme.BUILTIN)

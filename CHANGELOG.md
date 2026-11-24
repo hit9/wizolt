@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.77.22 - 2026-11-24
+
+- Brighten dark-theme command accents, Bash output, reasoning previews and status segments. Give Light stronger colored ink on pale backgrounds.
+
 ## 0.77.21 - 2026-11-24
 
 - Simplify the theme picker to Auto and five named palettes. Existing configurations using retired palettes resolve to a supported theme.

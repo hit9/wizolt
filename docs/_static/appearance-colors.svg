@@ -9,9 +9,9 @@
 .appearance-colors-r5 { fill: #98c383 }
 .appearance-colors-r6 { fill: #dddddd }
 .appearance-colors-r7 { fill: #bebf36 }
-.appearance-colors-r8 { fill: #ffac54;font-weight: bold }
-.appearance-colors-r9 { fill: #f3a384 }
-.appearance-colors-r10 { fill: #eddfba }
+.appearance-colors-r8 { fill: #ffd080;font-weight: bold }
+.appearance-colors-r9 { fill: #f6a78d }
+.appearance-colors-r10 { fill: #f3e6c8 }
 .appearance-colors-r11 { fill: #8ec07c }
 .appearance-colors-r12 { fill: #b8bb26 }
 .appearance-colors-r13 { fill: #f1bd3f;font-weight: bold }
@@ -19,7 +19,7 @@
 .appearance-colors-r15 { fill: #dadfe0 }
 .appearance-colors-r16 { fill: #92bdda }
 .appearance-colors-r17 { fill: #82c0bc }
-.appearance-colors-r18 { fill: #ff92cc;font-weight: bold }
+.appearance-colors-r18 { fill: #ffa3df;font-weight: bold }
 .appearance-colors-r19 { fill: #fd9fd3 }
 .appearance-colors-r20 { fill: #f8f8f2 }
 .appearance-colors-r21 { fill: #50fa7b }

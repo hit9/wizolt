@@ -111,8 +111,8 @@ DIFF_STYLES: dict[str, DiffStyle] = {
 
 
 SHELL_COLORS = {
-    "dark": {"shell_command": "#acd39a", "shell_string": "#e2cf88", "shell_variable": "#9ecac4", "shell_output": "#a4a4a4"},
-    "light": {"shell_command": "#325628", "shell_string": "#70530d", "shell_variable": "#285954", "shell_output": "#646464"},
+    "dark": {"shell_command": "#b1f396", "shell_string": "#ffe38c", "shell_variable": "#91ede1", "shell_output": "#bcbcbc"},
+    "light": {"shell_command": "#215d19", "shell_string": "#8b5810", "shell_variable": "#00605b", "shell_output": "#646464"},
 }
 
 
@@ -204,7 +204,7 @@ def scheme(
     diff_style: str,
 ) -> Palette:
     """Map a palette onto UI roles, lifting text contrast on its actual surfaces."""
-    muted = lift(comment, fg, background, 6.5)
+    muted = lift(comment, fg, background, 8.0)
     selection = blend(surface, detail, 0.43)
     edge = "#ffffff" if appearance == "dark" else "#000000"
     success = blend(green, fg, 0.15)
@@ -215,20 +215,20 @@ def scheme(
         appearance,
         {
             **CONTEXT_COLORS[appearance],
-            "shell_command": lift(detail, fg, background, 7.0),
-            "shell_string": lift(green, fg, background, 7.0),
-            "shell_variable": lift(purple, fg, background, 7.0),
+            "shell_command": lift(detail, fg, background, 10.0),
+            "shell_string": lift(green, fg, background, 10.0),
+            "shell_variable": lift(purple, edge, background, 10.0),
             "shell_output": SHELL_COLORS[appearance]["shell_output"],
             "text": text,
             "assistant": "#ffffff" if appearance == "dark" else text,
             "muted": muted,
-            "preview": lift(blend(background, comment, 0.50), fg, background, 3.0),
-            "subtle": lift(comment, fg, background, 3.0),
+            "preview": lift(blend(background, comment, 0.50), fg, background, 5.0),
+            "subtle": lift(comment, fg, background, 5.0),
             "accent": accent,
             "accent_secondary": purple,
             "info": detail,
             "user": blend(fg, accent, 0.48),
-            "tool": lift(accent, fg, background, 8.0),
+            "tool": lift(accent, edge, background, 10.0),
             "success": success,
             "warning": yellow,
             "error": red,
@@ -252,13 +252,13 @@ def scheme(
             "status_cache": comment,
             "status_yolo": red,
             "status_agent": blend(comment, orange, 0.3),
-            "status_agent_bg": blend(orange, status, 0.20),
-            "status_provider_bg": blend(detail, status, 0.22),
-            "status_model_bg": blend(yellow, status, 0.14),
-            "status_reason_bg": blend(purple, status, 0.18),
-            "status_context_bg": blend(green, status, 0.18),
+            "status_agent_bg": blend(orange, status, 0.06),
+            "status_provider_bg": blend(detail, status, 0.06),
+            "status_model_bg": blend(yellow, status, 0.04),
+            "status_reason_bg": blend(purple, status, 0.05),
+            "status_context_bg": blend(green, status, 0.06),
             "status_cache_bg": blend("#a8a8a8", status, 0.12),
-            "status_yolo_bg": blend(red, status, 0.12),
+            "status_yolo_bg": blend(red, status, 0.04),
             "status_bg": status,
             "user_bg": blend(background, accent, 0.12),
             "divider_glow": blend(rule, accent, 0.75),
@@ -286,7 +286,7 @@ def scheme(
     ):
         palette.colors[role] = lift(palette.colors[role], fg, background, 4.5)
     for role in ("syntax_assign", "syntax_ident", "syntax_string", "syntax_number", "syntax_builtin"):
-        palette.colors[role] = lift(palette.colors[role], fg, background, 7.0)
+        palette.colors[role] = lift(palette.colors[role], fg, background, 10.0)
     palette.colors["user"] = lift(palette.colors["user"], fg, palette.colors["user_bg"], 4.5)
     for role in (
         "status_base",
@@ -321,25 +321,25 @@ RETIRED = {
 BUILTIN: dict[str, Palette] = {
     "sand": scheme(
         "dark", fg="#f0dfc0", comment="#b2a087", surface="#373430", rule="#665d51", background="#30291f",
-        red="#f3977e", green="#b9ce8a", yellow="#f2cc72", detail="#71dcd2", purple="#d7a8bf", accent="#ffc66e", orange="#df935a",
+        red="#f3977e", green="#c3ed85", yellow="#f2cc72", detail="#72f1db", purple="#f2a9ce", accent="#ffc66e", orange="#f49a5a",
         status="#302d2a", pygments="gruvbox-dark", diff_style="classic",
     ),
     # https://github.com/morhetz/gruvbox — retain its warm, multicolor identity.
     "gruvbox-dark": scheme(
-        "dark", fg="#ebdbb2", comment="#928374", surface="#3c3836", rule="#665c54", background="#282828",
-        red="#fb4934", green="#b8bb26", yellow="#fabd2f", detail="#8ecaba", purple="#d3869b", accent="#ffac54", orange="#fe8019",
+        "dark", fg="#f3e6c8", comment="#928374", surface="#3c3836", rule="#665c54", background="#282828",
+        red="#fb4934", green="#d1df4a", yellow="#fabd2f", detail="#87e8cf", purple="#ffbbe5", accent="#ffd080", orange="#fe8019",
         status="#332f2d", pygments="gruvbox-dark", diff_style="classic",
     ),
     # https://ethanschoonover.com/solarized/ — contrast is lifted only where UI text needs it.
     "solarized-dark": scheme(
         "dark", fg="#839496", comment="#586e75", surface="#073642", rule="#45636a", background="#002b36",
-        red="#dc322f", green="#859900", yellow="#b58900", detail="#55cfc1", purple="#6c71c4", accent="#f1bd3f", orange="#cb4b16",
+        red="#fa6576", green="#b5d74c", yellow="#e8b937", detail="#55ead8", purple="#aea1fb", accent="#f1bd3f", orange="#ed7444",
         status="#07313a", pygments="solarized-dark", diff_style="classic",
     ),
     # https://spec.draculatheme.com/ — pink, purple, cyan and bright green.
     "dracula": scheme(
         "dark", fg="#f8f8f2", comment="#6272a4", surface="#363743", rule="#575765", background="#282a36",
-        red="#ff5555", green="#50fa7b", yellow="#f1fa8c", detail="#8be9fd", purple="#bd93f9", accent="#ff92cc", orange="#ffb86c",
+        red="#ff5555", green="#50fa7b", yellow="#f1fa8c", detail="#8be9fd", purple="#cba5ff", accent="#ffa3df", orange="#ffb86c",
         status="#30313b", pygments="dracula", diff_style="classic",
     ),
 }

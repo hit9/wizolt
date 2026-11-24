@@ -2,10 +2,10 @@
 <title>Rendered UI sample</title>
 <style>
 .appearance-custom-theme-matrix {font-family:monospace;font-size:20px;line-height:24.4px}
-.appearance-custom-theme-r1 { fill: #bead92 }
+.appearance-custom-theme-r1 { fill: #d1c0a4 }
 .appearance-custom-theme-r2 { fill: #abb2bf }
 .appearance-custom-theme-r3 { fill: #f7d399 }
-.appearance-custom-theme-r4 { fill: #ffc66e }
+.appearance-custom-theme-r4 { fill: #ffd18b }
 .appearance-custom-theme-r5 { fill: #f2e2c6 }
 .appearance-custom-theme-r6 { fill: #f2c97d }
 .appearance-custom-theme-r7 { fill: #8bd5ca }
