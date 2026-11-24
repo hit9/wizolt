@@ -1,0 +1,76 @@
+{
+  "reference": "../baselines/linux-arm64-py314-0.79.2.json",
+  "method": "Sequential optimization and replay suites, nine samples on each exported revision, previous revision first, same interpreter and environment as the reference.",
+  "results": {
+    "e35de95f": {
+      "skills_turn_rescan_100": {
+        "samples_ms": [
+          0.551166,
+          0.510792,
+          0.454209,
+          0.57625,
+          0.714958,
+          0.6095,
+          0.594125,
+          0.561291,
+          0.505917
+        ],
+        "median_ms": 0.561,
+        "min_ms": 0.454,
+        "max_ms": 0.715
+      },
+      "revisited_width_100_blocks": {
+        "samples_ms": [
+          0.029458,
+          0.042,
+          0.029375,
+          0.021542,
+          0.026542,
+          0.027959,
+          0.047541,
+          0.088292,
+          0.046667
+        ],
+        "median_ms": 0.029,
+        "min_ms": 0.022,
+        "max_ms": 0.088,
+        "output_sha256": "d78ac98b015012a781eb2b161db21fdd6feb94e929484605724781fdfb9b9e7e"
+      }
+    },
+    "3f0c8533": {
+      "skills_turn_rescan_100": {
+        "samples_ms": [
+          0.757375,
+          0.630083,
+          0.600791,
+          0.545209,
+          0.52075,
+          0.599792,
+          0.555333,
+          0.584792,
+          0.599625
+        ],
+        "median_ms": 0.6,
+        "min_ms": 0.521,
+        "max_ms": 0.757
+      },
+      "revisited_width_100_blocks": {
+        "samples_ms": [
+          0.020916,
+          0.025458,
+          0.023375,
+          0.019625,
+          0.018333,
+          0.017167,
+          0.016541,
+          0.017,
+          0.016667
+        ],
+        "median_ms": 0.018,
+        "min_ms": 0.017,
+        "max_ms": 0.025,
+        "output_sha256": "d78ac98b015012a781eb2b161db21fdd6feb94e929484605724781fdfb9b9e7e"
+      }
+    }
+  }
+}

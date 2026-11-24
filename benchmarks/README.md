@@ -9,6 +9,20 @@ document any retained cost. Update `baselines/` and this README's reference befo
 never accept a regression merely by replacing the baseline. If the environment or workload changed,
 remeasure the previous reference revision too so the comparison remains meaningful.
 
+## 0.79.2 release reference
+
+The [merged reference](baselines/linux-arm64-py314-0.79.2.json) at `3f0c8533` uses the same
+Linux ARM64 host, CPython 3.14.7 environment, workload and nine samples per timing metric as the
+[0.79.0 reference](baselines/linux-arm64-py314-0.79.0.json). The median first prompt took
+161.8 ms versus 159.6 ms. All 12 output digests matched. Retained memory in the two-width
+replay probe increased by 1,483 bytes.
+
+Two timings rose by more than 10% on the initial comparison. The 100-skill rescan moved from
+0.541 to 0.632 ms and the cached-width replay from 0.024 to 0.027 ms. A
+[paired repeat](results/linux-arm64-py314-0.79.2-repeat.json) measured the rescan at
+0.561 and 0.600 ms and the replay at 0.029 and 0.018 ms, previous and merged respectively.
+The measured skill reload and scrollback layout paths are unchanged across the revisions.
+
 ## 0.79.0 release reference
 
 The [merged reference](baselines/linux-arm64-py314-0.79.0.json) at `e35de95f` and
