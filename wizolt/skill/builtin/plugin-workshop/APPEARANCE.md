@@ -15,8 +15,7 @@ Read [SDK.md](SDK.md) for registration and callback contracts. Everything needed
 | `highlights` | Mapping from group name to `{fg, bg, bold, italic, underline}`; all keys optional |
 | `pygments` | Name of an installed Pygments style, such as `monokai` |
 
-Built-in bases: `dark`, `light`, `slate`, `forest`, `sand`, `plum`, `paper`, `gruvbox-dark`,
-`solarized-dark`, `dracula`, `papercolor-light`, `papercolor-dark`. A base cannot be another plugin
+Built-in bases: `dark`, `light`, `sand`, `gruvbox-dark`, `dracula`, `solarized-dark`. A base cannot be another plugin
 theme. Colors accept `#rgb`, `#rrggbb`, `default`, or a terminal color name:
 `ansiblack`, `ansired`, `ansigreen`, `ansiyellow`, `ansiblue`, `ansimagenta`, `ansicyan`,
 `ansigray`, `ansibrightblack`, `ansibrightred`, `ansibrightgreen`, `ansibrightyellow`,
@@ -126,7 +125,7 @@ def setup(plugin):
     plugin.theme(
         "night",
         {
-            "base": "slate",
+            "base": "gruvbox-dark",
             "colors": {"accent": "#88aabb", "status_model_bg": "#405366"},
             "diff": {"added": "#163b2c", "added_word": "#235c42"},
             "highlights": {"status.model": {"fg": "#eeeeee", "bg": "#405366", "bold": True}},

@@ -145,7 +145,7 @@ async def test_preview_matches_live_clipping_and_exports_images(trial, tmp_path)
     from wizolt.plugins.protocol import Snapshot
 
     original = Theme.name()
-    Theme.set_mode("forest")
+    Theme.set_mode("solarized-dark")
     try:
         path = plugin(
             tmp_path,
@@ -181,7 +181,7 @@ async def test_cli_returns_json_and_preview_without_starting_agent(tmp_path):
         "test",
         str(path),
         "--theme",
-        "forest",
+        "solarized-dark",
         "--facts",
         str(facts),
         "--output",
@@ -203,7 +203,7 @@ data_dir = "{tmp_path}/data"
 [runtime]
 theme = "personal"
 [ui.themes.personal]
-base = "forest"
+base = "solarized-dark"
 [ui.themes.personal.colors]
 context_chat = "#aabbcc"
 ''')

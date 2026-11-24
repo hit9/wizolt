@@ -33,15 +33,15 @@
     }
 
     .appearance-input-editor-r1 { fill: #abb2bf }
-.appearance-input-editor-r2 { fill: #ffac95 }
-.appearance-input-editor-r3 { fill: #9fb2c3 }
+.appearance-input-editor-r2 { fill: #ffac54 }
+.appearance-input-editor-r3 { fill: #beaf93 }
 .appearance-input-editor-r4 { fill: #282c34;font-weight: bold }
-.appearance-input-editor-r5 { fill: #9fb2c3;font-weight: bold }
+.appearance-input-editor-r5 { fill: #beaf93;font-weight: bold }
 .appearance-input-editor-r6 { fill: #ffffff }
-.appearance-input-editor-r7 { fill: #545963 }
-.appearance-input-editor-r8 { fill: #fbb29e }
-.appearance-input-editor-r9 { fill: #d7e5f1 }
-.appearance-input-editor-r10 { fill: #acd39a }
+.appearance-input-editor-r7 { fill: #665c54 }
+.appearance-input-editor-r8 { fill: #fdb15d }
+.appearance-input-editor-r9 { fill: #eddfba }
+.appearance-input-editor-r10 { fill: #8ecaba }
     </style>
 
     <defs>
@@ -109,7 +109,7 @@
             </g>
         
     <g transform="translate(9, 41)" clip-path="url(#appearance-input-editor-clip-terminal)">
-    <rect fill="#ffac95" x="768.6" y="1.5" width="146.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#537691" x="0" y="172.3" width="524.6" height="24.65" shape-rendering="crispEdges"/>
+    <rect fill="#ffac54" x="768.6" y="1.5" width="146.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#5f776f" x="0" y="172.3" width="524.6" height="24.65" shape-rendering="crispEdges"/>
     <g class="appearance-input-editor-matrix">
     <text class="appearance-input-editor-r2" x="24.4" y="20" textLength="158.6" clip-path="url(#appearance-input-editor-line-0)">&#160;Colorscheme&#160;</text><text class="appearance-input-editor-r3" x="183" y="20" textLength="36.6" clip-path="url(#appearance-input-editor-line-0)">&#160;│&#160;</text><text class="appearance-input-editor-r2" x="219.6" y="20" textLength="73.2" clip-path="url(#appearance-input-editor-line-0)">&#160;Diff&#160;</text><text class="appearance-input-editor-r3" x="292.8" y="20" textLength="36.6" clip-path="url(#appearance-input-editor-line-0)">&#160;│&#160;</text><text class="appearance-input-editor-r2" x="329.4" y="20" textLength="134.2" clip-path="url(#appearance-input-editor-line-0)">&#160;StatusBar&#160;</text><text class="appearance-input-editor-r3" x="463.6" y="20" textLength="36.6" clip-path="url(#appearance-input-editor-line-0)">&#160;│&#160;</text><text class="appearance-input-editor-r2" x="500.2" y="20" textLength="109.8" clip-path="url(#appearance-input-editor-line-0)">&#160;Divider&#160;</text><text class="appearance-input-editor-r3" x="610" y="20" textLength="36.6" clip-path="url(#appearance-input-editor-line-0)">&#160;│&#160;</text><text class="appearance-input-editor-r2" x="646.6" y="20" textLength="85.4" clip-path="url(#appearance-input-editor-line-0)">&#160;Input&#160;</text><text class="appearance-input-editor-r3" x="732" y="20" textLength="36.6" clip-path="url(#appearance-input-editor-line-0)">&#160;│&#160;</text><text class="appearance-input-editor-r4" x="768.6" y="20" textLength="146.4" clip-path="url(#appearance-input-editor-line-0)">&#160;Transcript&#160;</text><text class="appearance-input-editor-r1" x="927.2" y="20" textLength="12.2" clip-path="url(#appearance-input-editor-line-0)">
 </text><text class="appearance-input-editor-r1" x="927.2" y="44.4" textLength="12.2" clip-path="url(#appearance-input-editor-line-1)">

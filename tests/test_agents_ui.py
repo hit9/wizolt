@@ -85,7 +85,7 @@ async def test_main_attention_is_reported_in_selected_child(frontend, monkeypatc
     assert notices == [("agent [main]", "waiting for input")]
 
 
-@pytest.mark.parametrize("theme", ["forest", "paper"])
+@pytest.mark.parametrize("theme", ["solarized-dark", "paper"])
 @pytest.mark.parametrize("status,role,label", [
     ("waiting for input", "warning", "! subagent [child] needs input"),
     ("completed", "success", "✓ subagent [child] completed"),

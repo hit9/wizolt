@@ -2,10 +2,10 @@
 <title>Rendered UI sample</title>
 <style>
 .appearance-custom-divider-matrix {font-family:monospace;font-size:20px;line-height:24.4px}
-.appearance-custom-divider-r1 { fill: #9fb2c3 }
+.appearance-custom-divider-r1 { fill: #beaf93 }
 .appearance-custom-divider-r2 { fill: #abb2bf }
-.appearance-custom-divider-r3 { fill: #545963 }
-.appearance-custom-divider-r4 { fill: #ffac95 }
+.appearance-custom-divider-r3 { fill: #665c54 }
+.appearance-custom-divider-r4 { fill: #ffac54 }
 </style>
 <defs><clipPath id="appearance-custom-divider-clip-terminal">
 <rect width="926.1999999999999" height="121.0"/>

@@ -2,9 +2,12 @@
 
 ## Unreleased
 
+- Simplify the theme picker to Auto and five named palettes. Existing configurations using retired palettes resolve to a supported theme.
+- Use each palette’s own accents for Bash commands, strings, variables and status segments. Keep output previews neutral and shell separators subdued.
+
 ## 0.77.20 - 2026-11-23
 
-- Coalesce Markdown color runs and preserve plain foreground colors across wraps in the transcript layout cache. [Release measurements](benchmarks/README.md#07720-release-reference).
+- Coalesce Markdown color runs and preserve plain foreground colors across wraps in the transcript layout cache. [Release measurements](https://github.com/hit9/wizolt/blob/v0.77.20/benchmarks/README.md#07720-release-reference).
 - Keep streamed Markdown headings on the correct line in replies with CRLF line endings.
 - Report background compaction as ready after the summary client finishes closing, and clear its status if cleanup is interrupted.
 

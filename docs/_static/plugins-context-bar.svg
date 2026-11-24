@@ -2,18 +2,18 @@
 <title>Rendered UI sample</title>
 <style>
 .plugins-context-bar-matrix {font-family:monospace;font-size:20px;line-height:24.4px}
-.plugins-context-bar-r1 { fill: #9fb2c3 }
+.plugins-context-bar-r1 { fill: #beaf93 }
 .plugins-context-bar-r2 { fill: #abb2bf }
 .plugins-context-bar-r3 { fill: #91cc69 }
 .plugins-context-bar-r4 { fill: #b291ed }
 .plugins-context-bar-r5 { fill: #da8370 }
 .plugins-context-bar-r6 { fill: #8b98a4 }
-.plugins-context-bar-r7 { fill: #545963 }
-.plugins-context-bar-r8 { fill: #d7e5f1 }
+.plugins-context-bar-r7 { fill: #665c54 }
+.plugins-context-bar-r8 { fill: #eddfba }
 .plugins-context-bar-r9 { fill: #54ccb2 }
 .plugins-context-bar-r10 { fill: #e1d370 }
 .plugins-context-bar-r11 { fill: #ced2cb }
-.plugins-context-bar-r12 { fill: #e8ca83 }
+.plugins-context-bar-r12 { fill: #fabd2f }
 </style>
 <defs><clipPath id="plugins-context-bar-clip-terminal">
 <rect width="1292.1999999999998" height="169.79999999999998"/>

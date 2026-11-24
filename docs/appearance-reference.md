@@ -15,7 +15,7 @@ Keep your custom colors beside your other settings in `~/.wizolt/config.toml`:
 
 ```toml
 [ui.themes.my-theme]
-base = "slate"
+base = "sand"
 
 [ui.themes.my-theme.colors]
 user = "#f2c97d"
@@ -42,7 +42,7 @@ Create `~/.wizolt/themes/my-theme.toml` (or `themes/` inside your custom data di
 
 <!-- figure: custom-theme -->
 ```toml
-base = "slate"
+base = "sand"
 
 [colors]
 user = "#f2c97d"
@@ -50,10 +50,10 @@ tool = "#8bd5ca"
 ```
 
 Run `/theme my-theme`. Your messages become gold and tool labels become teal; everything else
-keeps Slate's colors. Edit the file and run the same command again to try another version.
+keeps Sand's colors. Edit the file and run the same command again to try another version.
 
 ```{figure} _static/appearance-custom-theme.svg
-:alt: The same user message and Edit call in Slate and in my-theme, with gold messages and teal tool labels.
+:alt: The same user message and Edit call in Sand and in my-theme, with gold messages and teal tool labels.
 
 Two overrides; the rest of the theme stays familiar.
 ```
@@ -93,17 +93,17 @@ Set `user_bg` in your custom theme's `[colors]` table to change the background: 
 Use `user_bg = "default"` to keep the terminal background. For the closest match, choose a
 theme suited to your terminal's background.
 
-For example, to give Slate a slightly brighter input and message background in your config:
+For example, to give Sand a slightly brighter input and message background in your config:
 
 ```toml
-[ui.themes.my-slate]
-base = "slate"
+[ui.themes.my-sand]
+base = "sand"
 
-[ui.themes.my-slate.colors]
+[ui.themes.my-sand.colors]
 user_bg = "#30333b"
 ```
 
-Restart wizolt, then select `/theme my-slate`.
+Restart wizolt, then select `/theme my-sand`.
 
 ### Change diff backgrounds
 
@@ -128,7 +128,7 @@ removed_sign = "#a35a00"   # the - that marks a removed line
 recolor the chrome around the bands; unset, they keep the built-in dim rail and markers.
 
 The file name is the theme's name, so it cannot be a built-in theme, `auto`, or a pair's name
-(`papercolor`, or `mine` once `mine-dark` and `mine-light` exist). A mistake in a theme file is
+(`mine` once `mine-dark` and `mine-light` exist). A mistake in a theme file is
 reported at startup and when `/theme` opens; the rest of the file still applies. `/theme` re-reads the folder each time it opens, so edits show up without a restart.
 
 
@@ -149,11 +149,11 @@ theme = "gruvbox-dark"
 [ui.divider]
 format = "preset:frame"
 sweep = "preset:comet"
-theme = "forest"
+theme = "gruvbox-dark"
 ```
 
 Omit `theme` or use `"inherit"` to follow the main Colorscheme. `"auto"` follows the terminal's
-light or dark background independently; pairs such as `"papercolor"` also follow the terminal.
+light or dark background independently; custom light/dark pairs also follow the terminal.
 An unknown name reports the setting and falls back to `"inherit"`.
 
 To choose your own foregrounds, backgrounds or Powerline segments, define a

@@ -729,14 +729,14 @@ model = ""
                                  # fallback), repository root down to cwd, under one shared budget
 
 # [ui.themes.mine]             # optional: define a theme here, or in <data_dir>/themes/mine.toml
-# base = "slate"               # choose with /theme mine; restart after editing inline definitions
+# base = "gruvbox-dark"               # choose with /theme mine; restart after editing inline definitions
 # [ui.themes.mine.colors]
 # user = "#f2c97d"
 # tool = "#8bd5ca"
 # [ui.statusbar]
 # theme = "inherit"           # own colors: an existing theme name, or auto for terminal light/dark
 # [ui.divider]
-# theme = "inherit"           # line, glow and labels; /theme divider theme forest
+# theme = "inherit"           # line, glow and labels; /theme divider theme sand
 
 # [transcript]                # how one settled tool call prints; /theme Transcript previews it
 # format = "preset:standard"  # or one bar-format row per line: {tool} {name} {args} {marker}

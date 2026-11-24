@@ -422,7 +422,7 @@ def test_cli_agents_switch_rebuilds_only_selected_transcript(pane):
         f'[paths]\ndata_dir = "{pane.path}/data"\n'
         '[provider]\nactive = "test"\n[provider.test]\n'
         'url = "http://127.0.0.1:9/v1"\nkey = "test-only"\nmodel = "agents-model"\n'
-        '[runtime]\ntheme = "forest"\n'
+        '[runtime]\ntheme = "solarized-dark"\n'
     )
     entry = pane.path / "agents.py"
     entry.write_text(
@@ -490,7 +490,7 @@ def test_cli_subagent_approval_config_survives_resize_under_yolo(pane):
         f'[paths]\ndata_dir = "{pane.path}/data"\n'
         '[provider]\nactive = "test"\n[provider.test]\n'
         'url = "http://127.0.0.1:9/v1"\nkey = "test-only"\nmodel = "gpt-4"\n'
-        'available_models = ["gpt-4", "o3"]\n[runtime]\ntheme = "forest"\n'
+        'available_models = ["gpt-4", "o3"]\n[runtime]\ntheme = "solarized-dark"\n'
     )
     entry = pane.path / "approval.py"
     entry.write_text(
@@ -595,7 +595,7 @@ def test_cli_agents_live_preview_and_stop_keys(pane):
         f'[paths]\ndata_dir = "{pane.path}/data"\n'
         '[provider]\nactive = "test"\n[provider.test]\n'
         'url = "http://127.0.0.1:9/v1"\nkey = "test-only"\nmodel = "test-model"\n'
-        '[runtime]\ntheme = "forest"\n[ui.statusbar]\nformat = "preset:lualine"\n'
+        '[runtime]\ntheme = "solarized-dark"\n[ui.statusbar]\nformat = "preset:lualine"\n'
     )
     entry = pane.path / "agent-controls.py"
     entry.write_text(
@@ -1001,7 +1001,7 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
             pane.keys("Space", "Tab", "j", "j")
             visible_containing("aurora")
             pane.keys("Space", "Tab", "j", "j", "j", "j", "Space")
-            visible_containing("Colors: slate")
+            visible_containing("Colors: gruvbox-dark")
             pane.keys("Enter")
         deadline = time.monotonic() + 15
         while f"closed {cycle}:" not in log.read_text():
@@ -1014,7 +1014,7 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
     assert "closed 1: interrupted" in log.read_text()
     assert "divider.format: preset:rail" in log.read_text()
     assert "divider.sweep: preset:aurora" in log.read_text()
-    assert "divider.theme: slate" in log.read_text()
+    assert "divider.theme: gruvbox-dark" in log.read_text()
     log.with_suffix(".open-3").touch()
     visible_containing("Colorscheme")
     pane.keys("l", "l")

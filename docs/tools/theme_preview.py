@@ -32,16 +32,10 @@ from wizolt.ui.render import LiveSpark, Theme
 CAPTIONS = {
     "dark": ("Terminal dark", "Warm amber prompts, turquoise paths and ivory user messages."),
     "light": ("Terminal light", "Cyan prompts and chestnut paths on pale gray."),
-    "slate": ("Slate", "Coral prompts with glacier-blue paths."),
-    "forest": ("Forest", "Leaf green prompts and apricot paths."),
     "sand": ("Sand", "Marigold with sea-glass paths."),
-    "plum": ("Plum", "Mulberry pink paired with fresh mint."),
-    "paper": ("Paper", "Terracotta and blue ink on warm paper."),
     "gruvbox-dark": ("Gruvbox Dark", "Tangerine and aqua with olive syntax."),
     "solarized-dark": ("Solarized Dark", "Ochre prompts and turquoise paths."),
     "dracula": ("Dracula", "Orchid prompts and ice-blue paths."),
-    "papercolor-light": ("PaperColor Light", "Berry and deep blue with olive syntax."),
-    "papercolor-dark": ("PaperColor Dark", "Antique gold and sky blue on charcoal."),
 }
 
 

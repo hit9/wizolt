@@ -26,7 +26,7 @@ uv run python docs/tools/render.py --list
 uv run python docs/tools/render.py --figure appearance-custom-statusbar
 
 # Preview another theme without replacing published images.
-uv run python docs/tools/render.py --theme slate --output-dir /tmp/wizolt-figures
+uv run python docs/tools/render.py --theme gruvbox-dark --output-dir /tmp/wizolt-figures
 
 # Build the documentation.
 uv run make -C docs html

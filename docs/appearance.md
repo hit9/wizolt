@@ -7,7 +7,7 @@ For your own colors, define `[ui.themes.my-theme]` in your config or keep a sepa
 [Preview the built-in themes, status bars and dividers](theme-preview.md). See the [copyable examples](appearance-reference.md#define-a-theme-in-your-config).
 
 ```{figure} _static/appearance-picker.svg
-:alt: The appearance picker with slate selected, spaced navigation and a bordered panel showing five labeled color samples.
+:alt: The appearance picker with Gruvbox Dark selected, spaced navigation and a bordered panel showing five labeled color samples.
 
 One picker for the whole look.
 ```
@@ -24,7 +24,7 @@ preview so more choices remain visible.
 The **Colorscheme** tab lists every built-in, custom and plugin theme and opens at your current choice.
 Press **/** to search by name, for example `sand` or `gruvbox-dark`.
 Model replies use white body text in dark themes and dark ink in light themes. Headings use the theme’s secondary accent.
-Bash highlights commands in green, quoted strings in gold and variables in teal. Flags and paths use the body text color. Live output and the short output excerpt under a completed command share a neutral gray.
+Bash uses separate accents for commands, quoted strings and variables. In Gruvbox Dark these are aqua, olive and mauve. Flags and paths use the body text color. Live output and the short output excerpt under a completed command share a neutral gray.
 A breathing star marks live reasoning, replies and Bash commands. Their previews share the transcript grid,
 with quieter text for reasoning and running commands.
 The preview shows a short exchange with a user message, a reply, an edit and its test result.
@@ -32,38 +32,25 @@ In smaller panes the opening lines stay visible while you browse. The other tabs
 dividers and ordinary/follow-up input symbols.
 
 ```{figure} _static/appearance-colors.svg
-:alt: The same Python function in dark, slate, forest, sand, plum and dracula.
+:alt: The same Python function in Sand, Gruvbox Dark, Solarized Dark and Dracula.
 
-Six themes, the same code. Preview the others in /theme.
+The four dark palettes, shown with the same code sample.
 ```
 
 | Feel | Themes |
 | --- | --- |
-| Coral and glacier blue | `slate` |
-| Leaf green and apricot | `forest` |
 | Sand gold and sea glass | `sand` |
-| Mulberry and jade | `plum` |
-| Terracotta and blue ink on warm paper | `paper` |
 | Tangerine, aqua and olive | `gruvbox-dark` |
 | Cyan and ochre | `solarized-dark` |
 | Orchid and ice blue with colorful syntax | `dracula` |
-| PaperColor's crisp, colorful syntax | `papercolor-light`, `papercolor-dark` |
-| Warm amber prompts and turquoise paths | `dark` |
 | Terminal cyan and chestnut paths on pale gray | `light` |
 
 The default, `auto`, selects `dark` or `light` for your terminal background. Named themes change wizolt's colors, so choose one that suits your
 terminal's background. Your terminal keeps its own background.
 
-`papercolor` follows your terminal between its light and dark variants. Unknown or removed
-theme names fall back to `dark`; no old-name mapping is applied. On a light terminal,
-select `/theme light` or `/theme auto` if your previous theme is no longer available.
+Older configurations using Forest or PaperColor Dark open in Gruvbox Dark, Slate opens in Solarized Dark, Plum opens in Dracula, and Paper or PaperColor Light open in Light. PaperColor follows the terminal through Auto. Custom and plugin themes remain available.
 
-Classic palettes come from [Gruvbox](https://github.com/morhetz/gruvbox),
-[Solarized](https://ethanschoonover.com/solarized/),
-[Dracula](https://spec.draculatheme.com/) and
-[PaperColor](https://github.com/NLKNguyen/papercolor-theme).
-
-Pick directly with `/theme slate`. Choices are saved for your next session.
+Pick directly with `/theme gruvbox-dark`. Choices are saved for your next session.
 
 ## Diff colors
 
@@ -182,12 +169,12 @@ Edit each prefix separately, then return to the list to save.
 You can also choose without opening the picker:
 
 ```text
-/theme slate
+/theme gruvbox-dark
 /theme diff zebra
 /theme statusbar vim
 /theme statusbar theme sand
 /theme divider frame
-/theme divider theme forest
+/theme divider theme sand
 /theme sweep aurora
 /theme input chevron
 ```

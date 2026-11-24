@@ -32,29 +32,6 @@ class Palette:
     highlights: dict[str, str] = field(default_factory=dict)
     # The diff style this theme pairs with, drawn while `ui.diff.style` is `auto`.
     diff_style: str = "classic"
-    # A port's code colors, which become its Pygments style when Pygments has none of its own.
-    syntax: Syntax | None = None
-
-
-@dataclass(frozen=True)
-class Syntax:
-    """A port's syntax highlight colors, mapped to Pygments token groups."""
-
-    comment: str
-    keyword: str
-    function: str
-    string: str
-    number: str
-    constant: str
-    type: str
-    operator: str
-    preproc: str  # decorators and preprocessor lines
-    builtin: str  # built-in functions and types
-    variable_builtin: str  # self, cls
-    property: str  # attributes and keyword arguments
-    punctuation: str
-    italic_comments: bool = True
-    italic_keywords: bool = False
 
 
 # `[diff]` keys in a theme file: the diff key each one recolors and how its color is used -- "bg:"
@@ -225,7 +202,6 @@ def scheme(
     status: str,
     pygments: str,
     diff_style: str,
-    syntax: Syntax | None = None,
 ) -> Palette:
     """Map a palette onto UI roles, lifting text contrast on its actual surfaces."""
     muted = lift(comment, fg, background, 6.5)
@@ -239,7 +215,10 @@ def scheme(
         appearance,
         {
             **CONTEXT_COLORS[appearance],
-            **SHELL_COLORS[appearance],
+            "shell_command": lift(detail, fg, background, 7.0),
+            "shell_string": lift(green, fg, background, 7.0),
+            "shell_variable": lift(purple, fg, background, 7.0),
+            "shell_output": SHELL_COLORS[appearance]["shell_output"],
             "text": text,
             "assistant": "#ffffff" if appearance == "dark" else text,
             "muted": muted,
@@ -273,7 +252,13 @@ def scheme(
             "status_cache": comment,
             "status_yolo": red,
             "status_agent": blend(comment, orange, 0.3),
-            **status_surfaces(appearance, status),
+            "status_agent_bg": blend(orange, status, 0.20),
+            "status_provider_bg": blend(detail, status, 0.22),
+            "status_model_bg": blend(yellow, status, 0.14),
+            "status_reason_bg": blend(purple, status, 0.18),
+            "status_context_bg": blend(green, status, 0.18),
+            "status_cache_bg": blend("#a8a8a8", status, 0.12),
+            "status_yolo_bg": blend(red, status, 0.12),
             "status_bg": status,
             "user_bg": blend(background, accent, 0.12),
             "divider_glow": blend(rule, accent, 0.75),
@@ -288,7 +273,6 @@ def scheme(
         background,
         true_color=True,
         diff_style=diff_style,
-        syntax=syntax,
     )
     # UI labels must remain readable even when a scheme's original accent is too faint.
     for role in (
@@ -320,34 +304,25 @@ def scheme(
     return palette
 
 
+# Old settings and inherited bases keep working without adding picker entries.
+RETIRED = {
+    "slate": "solarized-dark",
+    "forest": "gruvbox-dark",
+    "plum": "dracula",
+    "paper": "light",
+    "papercolor": "auto",
+    "papercolor-dark": "gruvbox-dark",
+    "papercolor-light": "light",
+}
+
 # Each palette has a distinct accent family. Code uses Pygments' established styles;
 # diffs remain independently selectable and default to classic in every palette.
 # fmt: off
 BUILTIN: dict[str, Palette] = {
-    "slate": scheme(
-        "dark", fg="#d7e5f1", comment="#91a5b7", surface="#2e343e", rule="#545963", background="#242b35",
-        red="#f08c91", green="#82d6bd", yellow="#e8ca83", detail="#84cdff", purple="#c4acf0", accent="#ffac95", orange="#e7bf86",
-        status="#292e35", pygments="nord", diff_style="classic",
-    ),
-    "forest": scheme(
-        "dark", fg="#dde8cf", comment="#9caa91", surface="#303832", rule="#505d54", background="#252d26",
-        red="#ed9691", green="#9cd59b", yellow="#e1cf7d", detail="#ffb487", purple="#d5b1a0", accent="#bbe67c", orange="#e4bd7c",
-        status="#292e2a", pygments="zenburn", diff_style="classic",
-    ),
     "sand": scheme(
         "dark", fg="#f0dfc0", comment="#b2a087", surface="#373430", rule="#665d51", background="#30291f",
-        red="#f3977e", green="#b9ce8a", yellow="#f2cc72", detail="#71dcd2", purple="#d7a8bf", accent="#ffc66e", orange="#ffc46d",
+        red="#f3977e", green="#b9ce8a", yellow="#f2cc72", detail="#71dcd2", purple="#d7a8bf", accent="#ffc66e", orange="#df935a",
         status="#302d2a", pygments="gruvbox-dark", diff_style="classic",
-    ),
-    "plum": scheme(
-        "dark", fg="#ece0f5", comment="#b19bbb", surface="#39333c", rule="#655965", background="#292330",
-        red="#f394b0", green="#87d4ca", yellow="#e6c986", detail="#7fe0b6", purple="#cca7ee", accent="#f9a0d4", orange="#eda6c3",
-        status="#302c31", pygments="dracula", diff_style="classic",
-    ),
-    "paper": scheme(
-        "light", fg="#353534", comment="#617482", surface="#eeeae3", rule="#bab3a8", background="#f8f5ef",
-        red="#a63d49", green="#297c71", yellow="#886323", detail="#076484", purple="#805795", accent="#ae461e", orange="#8b5942",
-        status="#efebe6", pygments="friendly", diff_style="classic",
     ),
     # https://github.com/morhetz/gruvbox — retain its warm, multicolor identity.
     "gruvbox-dark": scheme(
@@ -367,65 +342,8 @@ BUILTIN: dict[str, Palette] = {
         red="#ff5555", green="#50fa7b", yellow="#f1fa8c", detail="#8be9fd", purple="#bd93f9", accent="#ff92cc", orange="#ffb86c",
         status="#30313b", pygments="dracula", diff_style="classic",
     ),
-    # https://github.com/NLKNguyen/papercolor-theme — Type uses pink; pythonOperator uses purple.
-    # These share Python Statement colors by design, not positional field order.
-    "papercolor-light": scheme(
-        "light", fg="#444444", comment="#878787", surface="#e4e2df", rule="#bcbcbc", background="#eeeeee",
-        red="#af0000", green="#008700", yellow="#5f8700", detail="#006ca2", purple="#8700af", accent="#ad316f", orange="#d75f00",
-        status="#e7e5e2", pygments="papercolor-light", diff_style="classic",
-        syntax=Syntax(
-            comment="#878787", keyword="#d70087", function="#0087af", string="#5f8700", number="#d75f00", constant="#008700",
-            type="#d70087", operator="#8700af", preproc="#d75f00", builtin="#444444", variable_builtin="#444444", property="#005faf", punctuation="#444444",
-        ),
-    ),
-    "papercolor-dark": scheme(
-        "dark", fg="#d0d0d0", comment="#808080", surface="#303030", rule="#585858", background="#1c1c1c",
-        red="#af005f", green="#5faf00", yellow="#d7af5f", detail="#77ccfa", purple="#af87d7", accent="#ffcc67", orange="#ffaf00",
-        status="#27282a", pygments="papercolor-dark", diff_style="classic",
-        syntax=Syntax(
-            comment="#808080", keyword="#afd700", function="#5fafd7", string="#d7af5f", number="#ff5faf", constant="#5faf00",
-            type="#afd700", operator="#af87d7", preproc="#ff5faf", builtin="#d0d0d0", variable_builtin="#d0d0d0", property="#00afaf", punctuation="#d0d0d0",
-        ),
-    ),
 }
 # fmt: on
-
-
-def generated_pygments_style(name: str) -> type | None:
-    """The Pygments style for a port's `syntax`, built on first use; None for any other name."""
-    palette = next((palette for palette in BUILTIN.values() if palette.syntax and palette.colors["pygments"] == name), None)
-    if palette is None or palette.syntax is None:
-        return None
-    from pygments.style import Style
-    from pygments.token import Comment, Keyword, Name, Number, Operator, Punctuation, String, Token
-
-    syntax = palette.syntax
-    comment = ("italic " if syntax.italic_comments else "") + syntax.comment
-    keyword = ("italic " if syntax.italic_keywords else "") + syntax.keyword
-    styles = {
-        # Rich draws a token without a color in black, so plain text needs the scheme's foreground.
-        Token: palette.colors["syntax_default"],
-        Comment: comment,
-        Comment.Preproc: syntax.preproc,
-        Keyword: keyword,
-        Keyword.Constant: syntax.constant,
-        Keyword.Type: syntax.type,
-        Name.Function: syntax.function,
-        Name.Function.Magic: syntax.function,
-        Name.Class: syntax.type,
-        Name.Builtin: syntax.builtin,
-        Name.Builtin.Pseudo: syntax.variable_builtin,
-        Name.Decorator: syntax.preproc,
-        Name.Constant: syntax.constant,
-        Name.Attribute: syntax.property,
-        Name.Tag: syntax.keyword,
-        String: syntax.string,
-        Number: syntax.number,
-        Operator: syntax.operator,
-        Operator.Word: keyword,
-        Punctuation: syntax.punctuation,
-    }
-    return type(f"{name}Style", (Style,), {"name": name, "background_color": palette.background, "styles": styles})
 
 
 def normalize_color(value: object) -> str | None:
@@ -447,8 +365,6 @@ def normalize_color(value: object) -> str | None:
 
 
 def pygments_style_exists(name: str) -> bool:
-    if any(palette.syntax and palette.colors["pygments"] == name for palette in BUILTIN.values()):
-        return True
     try:
         from pygments.styles import get_style_by_name
 
@@ -510,7 +426,7 @@ def compile_themes(sources: list[tuple[str, str, dict]], builtins: dict[str, Pal
             problems.append(f"theme {path}: `{name}` is a built-in theme; choose another name")
             continue
         base_name = data.get("base", "dark")
-        base = builtins.get(base_name) if isinstance(base_name, str) else None
+        base = builtins.get(RETIRED.get(base_name, base_name)) if isinstance(base_name, str) else None
         if base is None:
             problems.append(f"theme {path}: base must be one of {', '.join(builtins)}")
             continue

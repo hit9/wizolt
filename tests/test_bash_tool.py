@@ -1176,8 +1176,10 @@ def test_uiprinter_syntax_highlights_bash_arguments(tmp_path):
     segments = UiPrinter().log_segments(LogBlock([line]))
     words = [(style, text.strip()) for style, text in segments if text.strip()]
     command = Theme.fg("shell_command")
-    for token in ("git", "&&", "printf", "|", "grep"):
+    for token in ("git", "printf", "grep"):
         assert (command, token) in words
+    for token in ("&&", "|"):
+        assert (Theme.fg("muted"), token) in words
     assert (Theme.fg("text"), "git") in words  # Argument of grep.
     assert (Theme.fg("shell_string"), "'%s'") in words
     assert (Theme.fg("shell_variable"), "$branch") in words

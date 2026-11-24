@@ -49,11 +49,11 @@ from wizolt.ui.themes import BUILTIN as NAMED_THEMES
 from wizolt.ui.themes import (
     CONTEXT_COLORS,
     DIFF_STYLES,
+    RETIRED,
     SHELL_COLORS,
     Palette,
     blend,
     contrast,
-    generated_pygments_style,
     lift,
     load_custom,
     normalize_color,
@@ -766,7 +766,7 @@ class Theme:
 
     @classmethod
     def set_mode(cls, name: str) -> None:
-        cls._mode = name if name in cls.themes() else "dark"
+        cls._mode = name if name in cls.themes() else cls.resolve(name)
         cls._generation += 1
 
     @classmethod
@@ -1112,16 +1112,16 @@ class Theme:
     def choices(cls) -> tuple[str, ...]:
         """What the picker lists: `auto`, then every theme. A pair is not listed beside its two
         themes, which crowded the menu, but `runtime.theme` still accepts one."""
-        return (cls.AUTO, *cls.themes())
+        return (cls.AUTO, *(name for name in cls.themes() if name != "dark"))
 
     @classmethod
     def canonical(cls, name: str) -> str | None:
         """`name` as `runtime.theme` spells it -- `auto`, a pair or a theme -- or None if it is none
         of them. Matched exactly, then ignoring case."""
-        name, known = name.strip(), (*cls.choices(), *cls.pairs())
+        name, known = name.strip(), (cls.AUTO, *cls.themes(), *cls.pairs())
         if name in known:
             return name
-        return next((choice for choice in known if choice.lower() == name.lower()), None)
+        return next((choice for choice in known if choice.lower() == name.lower()), RETIRED.get(name.lower()))
 
     @classmethod
     def resolve(cls, configured: str) -> str:
@@ -1140,7 +1140,7 @@ class Theme:
         name = cls.palette()["pygments"]
         if name not in cls._pygments_cache:
             try:
-                cls._pygments_cache[name] = generated_pygments_style(name) or get_style_by_name(name)
+                cls._pygments_cache[name] = get_style_by_name(name)
             except Exception:  # noqa: BLE001 - optional Pygments styles must degrade to plain rendering.
                 cls._pygments_cache[name] = None
         return cls._pygments_cache[name]
@@ -2023,9 +2023,10 @@ class UiPrinter:
                     role = "shell_variable"
                 elif token in Token.String:
                     role = "shell_string"
+                elif separator:
+                    role = "muted"
                 elif (
-                    separator
-                    or token in Token.Keyword
+                    token in Token.Keyword
                     or (token is Token.Text and value in {">", ">>", "<"})
                     or (command_start and token in (Token.Text, Token.Name.Builtin))
                 ):

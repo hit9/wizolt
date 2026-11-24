@@ -17,10 +17,10 @@
       const preview = document.currentScript.parentElement;
       const data = JSON.parse(preview.querySelector('script[type="application/json"]').textContent);
       const [theme, bar, divider] = preview.querySelectorAll('select');
-      for (const [name, item] of Object.entries(data)) theme.add(new Option(item.name, name));
+      for (const [name, item] of Object.entries(data)) if (name !== 'dark') theme.add(new Option(item.name, name));
       for (const name of Object.keys(data.dark.sample.bars)) bar.add(new Option(name));
       for (const name of Object.keys(data.dark.sample.dividers)) divider.add(new Option(name));
-      theme.value = 'slate';
+      theme.value = 'gruvbox-dark';
       bar.value = 'lualine';
       divider.value = 'comet';
 

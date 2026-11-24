@@ -290,7 +290,7 @@ def test_repeated_panel_projection_tracks_width_content_theme_and_caller_mutatio
         assert PluginView.render([panel], 80, 2) == first
         narrow = PluginView.render([panel], 3, 1)
         assert "".join(text for _, text in narrow) == "猫e\u0301"
-        Theme.set_mode("forest")
+        Theme.set_mode("solarized-dark")
         recolored = PluginView.render([panel], 80, 2)
         assert recolored != first
         assert [text for _, text in recolored] == [text for _, text in first]

@@ -211,7 +211,7 @@ def test_appearance_command_completion():
         return [item.text for item in completer.get_completions(Document(text), None)]
 
     assert "/statusbar" not in COMMAND_NAMES and "/divider" not in COMMAND_NAMES
-    assert "statusbar " in choices("/theme ") and "plum" in choices("/theme ")
+    assert "statusbar " in choices("/theme ") and "dracula" in choices("/theme ")
     assert choices("/theme statusbar pow") == ["powerline"]
     assert choices("/theme divider fra") == ["frame"]
     assert choices("/theme sweep aur") == ["aurora"]
@@ -238,6 +238,7 @@ async def test_small_pane_prioritizes_choices_over_the_sample(command_loop, monk
     from wizolt.ui.cli import appearance
 
     monkeypatch.setattr(appearance, "picker_height", lambda: 14)
+    command_loop.session.config.ui["themes"] = {f"custom-{i}": {"base": "sand"} for i in range(5)}
     modal = command_loop.presentation.tui = BarModal(["escape"])
     await theme_command(command_loop, "")
     text = "".join(text for _, text in modal.frames[0])
@@ -409,22 +410,22 @@ async def test_invalid_input_preset_is_rejected_without_mutating_settings(comman
 
 
 async def test_component_themes_persist_independently_and_survive_global_switch(command_loop):
-    for args in ("statusbar lualine", "divider frame", "statusbar theme gruvbox-dark", "divider theme forest"):
+    for args in ("statusbar lualine", "divider frame", "statusbar theme gruvbox-dark", "divider theme solarized-dark"):
         assert "saved" in await theme_command(command_loop, args)
     assert saved(command_loop)["ui"] == {
         "statusbar": {"format": "preset:lualine", "theme": "gruvbox-dark"},
-        "divider": {"format": "preset:frame", "theme": "forest"},
+        "divider": {"format": "preset:frame", "theme": "solarized-dark"},
     }
-    await theme_command(command_loop, "plum")
-    assert Theme.name() == "plum"
+    await theme_command(command_loop, "dracula")
+    assert Theme.name() == "dracula"
     assert Theme.bar_palette("statusbar") is Theme.BUILTIN["gruvbox-dark"]
-    assert Theme.bar_palette("divider") is Theme.BUILTIN["forest"]
+    assert Theme.bar_palette("divider") is Theme.BUILTIN["solarized-dark"]
     command_loop.configure_theme()
     assert not command_loop.presentation.status_bar.layout.errors
-    assert Theme.selected_bar_theme("divider") == "forest"
+    assert Theme.selected_bar_theme("divider") == "solarized-dark"
     assert "saved" in await theme_command(command_loop, "statusbar theme inherit")
     assert Theme.bar_palette("statusbar") is Theme.active()
-    assert Theme.bar_palette("divider") is Theme.BUILTIN["forest"]
+    assert Theme.bar_palette("divider") is Theme.BUILTIN["solarized-dark"]
 
 
 @pytest.mark.parametrize("kind", ["statusbar", "divider"])
@@ -436,14 +437,14 @@ async def test_unknown_component_theme_does_not_change_or_save_settings(command_
 
 @pytest.mark.parametrize("kind,keys", [("statusbar", ["l", "l", "tab"]), ("divider", ["h", "h", "h", "tab", "tab"])])
 async def test_picker_component_color_confirmation_and_cancel(command_loop, kind, keys):
-    # inherit -> auto -> dark -> light -> slate; Space pins slate, forest stays a hover.
+    # inherit -> auto -> dark -> light -> gruvbox-dark; Space pins gruvbox-dark, solarized-dark stays a hover.
     command_loop.presentation.tui = BarModal([*keys, "j", "j", "j", "j", " ", "j", "enter"])
-    assert f"{kind}.theme: slate" in await theme_command(command_loop, "")
-    assert saved(command_loop)["ui"] == {kind: {"theme": "slate"}}
+    assert f"{kind}.theme: gruvbox-dark" in await theme_command(command_loop, "")
+    assert saved(command_loop)["ui"] == {kind: {"theme": "gruvbox-dark"}}
     command_loop.presentation.tui = BarModal([*keys, "j", " ", "escape"])
     assert await theme_command(command_loop, "") is None
-    assert Theme.selected_bar_theme(kind) == "slate"
-    assert saved(command_loop)["ui"] == {kind: {"theme": "slate"}}
+    assert Theme.selected_bar_theme(kind) == "gruvbox-dark"
+    assert saved(command_loop)["ui"] == {kind: {"theme": "gruvbox-dark"}}
 
 
 def test_component_theme_completion():
@@ -454,11 +455,11 @@ def test_component_theme_completion():
 
 @pytest.mark.parametrize("value", ["missing", 123, False])
 def test_invalid_component_config_falls_back_without_rejecting_layout(command_loop, value):
-    command_loop.session.config.ui = {"statusbar": {"format": "preset:minimal", "theme": value}, "divider": {"theme": "forest"}}
+    command_loop.session.config.ui = {"statusbar": {"format": "preset:minimal", "theme": value}, "divider": {"theme": "solarized-dark"}}
     command_loop.configure_theme()
     assert any("ui.statusbar.theme" in error for error in command_loop.theme_problems)
     assert Theme.selected_bar_theme("statusbar") == "inherit"
-    assert Theme.selected_bar_theme("divider") == "forest"
+    assert Theme.selected_bar_theme("divider") == "solarized-dark"
     assert command_loop.presentation.status_bar.layout.sources["statusbar"] == "preset:minimal"
 
 
@@ -466,7 +467,7 @@ async def test_custom_component_highlights_and_sweep_use_the_selected_palette(co
     command_loop.session.config.ui = {
         "themes": {
             "mine": {
-                "base": "forest",
+                "base": "solarized-dark",
                 "colors": {"divider_rule": "#112233", "divider_glow": "#aabbcc"},
                 "highlights": {"badge": {"fg": "#123456"}, "divider.label": {"fg": "#fedcba"}},
             }
@@ -483,12 +484,12 @@ async def test_custom_component_highlights_and_sweep_use_the_selected_palette(co
     styles = command_loop.view.style()
     assert styles.get_attrs_for_style_str("class:queue.rule").color == "112233"
     assert styles.get_attrs_for_style_str("class:divider.glow0").color == "aabbcc"
-    await theme_command(command_loop, "plum")
+    await theme_command(command_loop, "dracula")
     assert command_loop.view.style().get_attrs_for_style_str("class:queue.rule").color == "112233"
 
 
 async def test_component_picker_accepts_a_theme_named_custom(command_loop):
-    command_loop.session.config.ui = {"themes": {"custom": {"base": "forest"}}}
+    command_loop.session.config.ui = {"themes": {"custom": {"base": "solarized-dark"}}}
     command_loop.configure_theme()
     command_loop.presentation.tui = BarModal(["l", "l", "tab", "G", " ", "enter"])
     assert "statusbar.theme: custom" in await theme_command(command_loop, "")
@@ -499,20 +500,20 @@ async def test_statusbar_powerline_and_warning_colors_are_scoped(command_loop):
     command_loop.session.config.ui = {
         "themes": {"mine": {"base": "sand", "highlights": {"status.model": {"fg": "#112233", "bg": "#aabbcc"}}}},
         "statusbar": {"format": "preset:lualine", "theme": "mine"},
-        "divider": {"theme": "forest"},
+        "divider": {"theme": "solarized-dark"},
     }
     command_loop.configure_theme()
     parts = command_loop.presentation.status_bar.fragments()
     assert any("fg:#112233 bg:#aabbcc" in style for style, _ in parts)
     colors = Theme.bar_styles({"status.warning", "status.error"})
-    await theme_command(command_loop, "plum")
+    await theme_command(command_loop, "dracula")
     assert Theme.bar_styles({"status.warning", "status.error"}) == colors
-    assert command_loop.view.style().get_attrs_for_style_str("class:divider.working").color == Theme.BUILTIN["forest"].colors["divider_label"].lstrip("#")
+    assert command_loop.view.style().get_attrs_for_style_str("class:divider.working").color == Theme.BUILTIN["solarized-dark"].colors["divider_label"].lstrip("#")
 
 
 async def test_leaving_color_preview_restores_custom_highlights_and_keeps_focus(command_loop):
     command_loop.session.config.ui = {
-        "themes": {"mine": {"base": "forest", "highlights": {"badge": {"fg": "#123456"}}}},
+        "themes": {"mine": {"base": "solarized-dark", "highlights": {"badge": {"fg": "#123456"}}}},
         "statusbar": {"theme": "mine", "format": "[badge]{model}[/]"},
     }
     command_loop.configure_theme()

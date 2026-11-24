@@ -28,7 +28,7 @@ It also supplies shortcut list/bind/unbind operations; configure keys for the us
    Pass the `.py` file to CLI commands, or the repository directory for a package.
    The installed NAME is the file stem, or the project name with `-`/`.` turned into `_`; it names
    the `[plugins.NAME]` config table and `{plugins.NAME.FIELD}` fields.
-3. **Check:** `plugin validate PATH`, then `plugin test PATH --theme forest --width 80`. Read the
+3. **Check:** `plugin validate PATH`, then `plugin test PATH --theme sand --width 80`. Read the
    JSON report and view each PNG: components and contributed statusbar/divider presets. Test a
    narrow width too; `--times 0 0.5 1` samples animation. Trials run trusted Python for real.
    Use `--call command:NAME --interactions answers.json` for scripted dialogs and temporary
