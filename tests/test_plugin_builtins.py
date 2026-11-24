@@ -115,8 +115,8 @@ async def test_context_bar_stacks_categories_and_the_unestimated_rest(runtime):
     assert [span.role for span in bar.spans] == ["context_system", "context_chat", "context_other", "rule", "text"]
     assert sum(len(span.text) for span in bar.spans[:3]) == round(50_000 * 56 / 180_000)
     assert "system 10k" in text(legend) and "other 10k" in text(legend) and text(legend).endswith("50k/180k")
-    # The legend lists the largest shares first, so the big ones survive a narrow pane.
-    assert text(legend).startswith("assistant 30k")
+    # The legend follows the bar's order, so labels and segments read left to right alike.
+    assert text(legend).startswith("system 10k")
 
 
 async def test_context_bar_spreads_estimates_above_the_reported_fill_inside_it(runtime):

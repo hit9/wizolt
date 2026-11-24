@@ -34,8 +34,8 @@ from wizolt.sdk import Context, Line, Panel, Plugin, Text
 
 SDK_VERSION = 1
 
-# Segment and legend share a hue. Short names keep more categories visible in the legend,
-# which lists the largest shares first so the big ones survive a narrow pane.
+# Segment and legend share a hue. Short names keep the conversation visible in the
+# legend alongside the smaller categories even on a split pane.
 KEYS = {
     "system tools": ("tools", "context_tools"),
     "system prompt": ("system", "context_system"),
@@ -88,7 +88,7 @@ def allocate(weights: list[int], width: int) -> list[int]:
 
 
 def legend(parts: list[tuple[str, int]], totals: str, columns: int) -> Line:
-    """Name the drawn categories largest first, cut with an ellipsis, totals right-aligned."""
+    """Name the drawn categories in bar order, cut with an ellipsis, totals right-aligned."""
     room = columns - len(totals) - 1
     if room < 16:  # Too little legend to be worth it: keep only the totals.
         # The narrowest terminals cannot even fit the totals: the percentage alone is the one
@@ -144,13 +144,7 @@ def draw(context: Context) -> Panel:
     spans += [Text(" " + percent, "error" if shown >= 95 else "warning" if shown >= 80 else "text")] if percent else []
     rows: list[Text | Line] = [Line(tuple(spans))]
     if parts and (context.layout is None or context.layout.rows >= 2):
-        rows.append(
-            legend(
-                sorted(((name, tokens) for name, tokens, _ in drawn), key=lambda part: part[1], reverse=True),
-                f"{compact(filled)}/{compact(total)}" + ("" if percent else f" {shown}%"),
-                columns,
-            )
-        )
+        rows.append(legend([(name, tokens) for name, tokens, _ in drawn], f"{compact(filled)}/{compact(total)}" + ("" if percent else f" {shown}%"), columns))
     return Panel(tuple(rows))
 
 
