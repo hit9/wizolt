@@ -290,7 +290,7 @@ class ContextManager:
 
     def calibrated(self, tokens: int) -> int:
         """A raw wire estimate read through the session's reported-to-estimated factor."""
-        return round(tokens * self.session.state.context_factor)
+        return round(tokens * self.session.estimate_factor())
 
     def update_percent(self, messages: list[Json], tools: list[Json] | None = None, *, tokens: int | None = None) -> int:
         # context_tokens stays the raw estimate: it is the anchor the next reported pair calibrates
@@ -343,7 +343,7 @@ class ContextManager:
             ("summary", self.estimated_tokens(checkpoints) if checkpoints else 0),
             *self.conversation_parts(self.dedup_skill_loads(self.dedup_mcp_describes(conversation))),
         ]
-        factor = self.session.state.context_factor
+        factor = self.session.estimate_factor()
         return [(name, round(tokens * factor)) for name, tokens in parts]
 
     def conversation_parts(self, conversation: list[Json]) -> list[tuple[str, int]]:

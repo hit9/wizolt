@@ -79,9 +79,11 @@ class AgentState:
     name_source: str = ""  # "" | user | goal | input
     context_percent: int = 0
     context_tokens: int = 0  # transient projection estimate; do not reconstruct it from a rounded percentage
-    # Transient reported/raw ratio (EWMA, clamped): calibrates the bytes/4 estimate toward the
-    # provider's tokenizer. The raw estimate above stays the pairing anchor; a resume starts at 1.
+    # Durable reported/raw ratio (EWMA, clamped): calibrates the bytes/4 estimate toward the
+    # provider's tokenizer. The raw estimate above stays the pairing anchor. Keyed by the wire
+    # api/model it was learned on; a different model reads it as 1 and relearns.
     context_factor: float = 1.0
+    context_factor_for: str = ""
     turn_step: int = 0
     turn_messages: int = 0
     round_count: int = 0

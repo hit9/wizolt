@@ -316,6 +316,16 @@ class Session:
         provider = self.config.provider
         return request_budget_for(provider.context_token_limit(self.settings.max_context_tokens), provider.output_token_budget())
 
+    def estimate_factor(self) -> float:
+        """The learned correction for the current wire api/model; 1 when it was learned on another.
+
+        A resume keeps the factor, but a provider or model switch tokenizes differently, so the
+        stored ratio is read as uncalibrated until a report on the new route teaches it again.
+        """
+        provider = self.config.provider
+        identity = f"{provider.api}/{provider.model}"
+        return self.state.context_factor if self.state.context_factor_for == identity else 1.0
+
     def calibrate_context_estimate(self, reported: int) -> None:
         """Fold one main request's reported prompt tokens into the estimate's correction factor.
 
@@ -327,6 +337,11 @@ class Session:
         raw = self.state.context_tokens
         if raw <= 0 or reported <= 0:
             return
+        provider = self.config.provider
+        identity = f"{provider.api}/{provider.model}"
+        if self.state.context_factor_for != identity:
+            self.state.context_factor = 1.0
+            self.state.context_factor_for = identity
         ratio = min(2.0, max(0.8, reported / raw))
         self.state.context_factor = 0.5 * self.state.context_factor + 0.5 * ratio
 
@@ -341,7 +356,7 @@ class Session:
         usage = self.usage
         reported = bool(usage.last_prompt_tokens and usage.last_prompt_budget)
         budget = usage.last_prompt_budget if reported else self.request_token_budget()
-        used = usage.last_prompt_tokens if reported else round(self.state.context_tokens * self.state.context_factor)
+        used = usage.last_prompt_tokens if reported else round(self.state.context_tokens * self.estimate_factor())
         return {
             "percent": usage.context_percent(self.state.context_percent),
             "used": used,

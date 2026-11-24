@@ -287,6 +287,8 @@ class SessionSnapshotCodec:
             "name": state.name,
             "name_source": state.name_source,
             "compaction_count": state.compaction_count,
+            "context_factor": state.context_factor,
+            "context_factor_for": state.context_factor_for,
             "round_count": state.round_count,
             "last_turn_status": state.last_turn_status,
             "last_turn_error": state.last_turn_error,

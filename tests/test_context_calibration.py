@@ -70,13 +70,31 @@ def test_the_fill_before_any_report_wears_the_factor(tmp_path):
     s = session_with_provider(tmp_path)
     s.state.context_tokens = 100_000
     s.state.context_factor = 1.2
+    s.state.context_factor_for = f"{s.config.provider.api}/{s.config.provider.model}"
     assert s.context_fill()["used"] == 120_000
 
 
-def test_the_factor_is_transient_and_a_resume_starts_uncalibrated(tmp_path):
+def test_the_factor_survives_a_resume_on_the_same_model(tmp_path):
     s = session_with_provider(tmp_path)
-    s.state.context_factor = 1.5
-    assert "context_factor" not in SessionSnapshotCodec.state(s.state)
+    s.state.context_tokens = 100_000
+    s.calibrate_context_estimate(120_000)
+    data = SessionSnapshotCodec.state(s.state)
+    assert data["context_factor"] == s.state.context_factor
+    s.state = SessionSnapshotCodec.agent_state(data)
+    assert s.estimate_factor() == s.state.context_factor > 1.0
+
+
+def test_a_different_model_reads_the_stored_factor_as_uncalibrated(tmp_path):
+    s = session_with_provider(tmp_path)
+    s.state.context_tokens = 100_000
+    s.calibrate_context_estimate(120_000)
+    assert s.estimate_factor() > 1.0
+    s.config.provider.model = "another-model"
+    assert s.estimate_factor() == 1.0
+    # The next report on the new route learns from 1, not from the old model's ratio.
+    s.state.context_tokens = 100_000
+    s.calibrate_context_estimate(120_000)
+    assert s.state.context_factor == pytest.approx(1.1, abs=1e-4)
 
 
 async def test_compaction_fires_on_the_calibrated_reading(tmp_path):
