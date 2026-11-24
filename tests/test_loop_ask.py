@@ -408,7 +408,7 @@ async def test_a_live_call_printed_under_minimal_regains_its_output_and_gap(tmp_
     assert transcript() == "\n  Bash  pytest -q\n    └ 41 passed · tr.1\n\n  Read  x.py → tr.2\n"
 
 
-async def test_tool_batch_closes_a_long_silent_run_with_a_phase_rule(tmp_path):
+async def test_tool_batch_closes_a_long_silent_run_with_a_blank_line(tmp_path):
     """While the agent works in silence its calls run together; a stretch of silent tool
     batches -- the model never saying anything back -- closes with the same seam, fired after
     the batch's output is out so a batch is never cut in half."""
@@ -420,7 +420,7 @@ async def test_tool_batch_closes_a_long_silent_run_with_a_phase_rule(tmp_path):
 
     loop.presentation.tool_batch_output(True)
 
-    assert rules == ["rule"]
+    assert rules == ["blank"]
 
 
 async def test_a_silent_run_too_close_to_the_rule_above_draws_no_seam(tmp_path):
@@ -437,7 +437,7 @@ async def test_a_silent_run_too_close_to_the_rule_above_draws_no_seam(tmp_path):
 
     loop.presentation.ui.rows_since_rule = loop.presentation.MIN_ROWS_BETWEEN_RULES
     loop.presentation.tool_batch_output(True)
-    assert rules == ["rule"]
+    assert rules == ["blank"]
 
 
 async def test_tool_batch_keeps_a_short_silent_run_together(tmp_path):
@@ -542,7 +542,7 @@ async def test_full_turn_parts_at_user_rule_narration_and_silent_batches(tmp_pat
     real_seam = loop.presentation.ui.emit_run_seam
 
     def emit_seam(style):
-        if style() == "rule":
+        if style() == "blank":
             rules.append(loop.presentation.ui.rows_since_rule)
         real_seam(style)
 
@@ -593,6 +593,7 @@ async def test_resumed_session_draws_user_narration_and_silent_batch_rules(tmp_p
         s = loop.session
         s.resumed = True
         s.transcript_messages = messages
+        s.config.transcript = {"close": "rule"}
         s.tool_records = records
         rules = []
         real_rule = loop.presentation.ui.emit_phase_rule

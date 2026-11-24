@@ -1052,8 +1052,18 @@ def test_tool_runner_finish_display_bounds_bash_output(tmp_path):
     assert "stdout:" in display and "stderr:" in display  # both streams ran, so both are labeled
     assert "out 18" in display and "out 19" in display
     assert "err" in display
-    assert display.endswith("    └ … +17 more lines · Ctrl-O for more")  # the trailer only exists because lines were dropped
+    assert display.endswith("    └ +17 lines · Ctrl-O")  # the trailer only exists because lines were dropped
     assert "stored" not in display
+
+
+@pytest.mark.parametrize(("total", "label"), [(4, "+1 line"), (201, "+198 lines")])
+def test_truncated_bash_preview_fits_a_narrow_pane(tmp_path, total, label):
+    output = Tool.process_result("BashToolResult", 0, "\n".join(map(str, range(total))), "")
+    block = toolblocks.finish_display(session(tmp_path), ToolCall("b", "Bash", ["seq"]), "tr.1", output, failed=False)
+    assert isinstance(block, LogBlock)
+    rows = "".join(text for _, text in UiPrinter().log_segments(block, 32)).splitlines()
+    assert len(rows) == 5  # Command, three output lines, one footer.
+    assert rows[-1] == f"    └ {label} · Ctrl-O"
 
 
 def test_tool_runner_finish_display_keeps_bounded_bash_output_after_live_preview(tmp_path):

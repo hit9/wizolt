@@ -115,7 +115,7 @@ async def test_the_sample_renders_the_record_for_the_highlighted_row(command_loo
     # exactly as a settled Bash call prints.
     assert "Bash  rg -n export_rows src → tr.12 [auto]" in standard
     assert "├ src/db/rows.rs:140:     rows.push(row);" in standard
-    assert "└ … +2 more lines · Ctrl-O for more" in standard
+    assert "└ +2 lines · Ctrl-O" in standard
     # The checklist preset is the whole record on its call line.
     assert "● bash  rg -n export_rows src → tr.12 [auto]" in minimal
     assert "rows.push(row);" not in minimal
@@ -149,7 +149,7 @@ async def test_saving_the_tool_run_divider_redraws_the_printed_transcript(comman
     so saving one asks for the redraw that reaches them."""
     modal = command_loop.presentation.tui = TranscriptModal(["h", *(["j"] * 6), " ", "enter"])
     result = await theme_command(command_loop, "")
-    assert result is not None and "transcript.close: blank (saved)" in result
+    assert result is not None and "transcript.close: rule (saved)" in result
     assert modal.recolored == 1
 
 
@@ -174,7 +174,7 @@ async def test_f_opens_the_format_panel_on_the_transcript_setting(command_loop):
     # `standard` is the builtin assembly: there are no rows to show it expanding to.
     assert "value" in view and "preset:standard" in view and "expands to" not in view
     assert "transcript.format · draft" in draft and "Ctrl-S apply · Esc discard" in draft
-    assert "└ … +2 more lines · Ctrl-O for more" in draft  # the sample beside it is the selection's
+    assert "└ +2 lines · Ctrl-O" in draft  # the sample beside it is the selection's
 
 
 async def test_f_on_a_preset_edits_the_rows_it_stands_for(command_loop):
@@ -262,8 +262,8 @@ def test_a_draft_accepted_in_the_panel_keeps_its_custom_row(command_loop):
             "thinking:collapsed",
             "thinking:hidden",
             "close",
-            "close:rule",
             "close:blank",
+            "close:rule",
             "close:none",
         )
         assert state.selected_choice() == "format:custom"

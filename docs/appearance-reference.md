@@ -362,7 +362,7 @@ The same table holds two more keys:
 | Key | Values | Meaning |
 | --- | --- | --- |
 | `thinking` | `expanded`, `collapsed`, `hidden` | The reasoning shown while it arrives: the newest lines, its opening line, or none |
-| `close` | `rule`, `blank`, `none` | What closes a long run of tool calls the agent never talks over |
+| `close` | `blank` (default), `rule`, `none` | What closes a long run of tool calls the agent never talks over |
 
 ### Powerline colors
 

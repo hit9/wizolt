@@ -40,7 +40,7 @@ OUTPUT_ROW = re.compile(r"\{output(?:\|(tail|head):(\d+))?\}")
 # How the model's reasoning appears while it arrives, and how a long run of silent tool calls is
 # closed before the next model text. Both are the transcript's own look, so both live here.
 THINKING = ("expanded", "collapsed", "hidden")
-CLOSE = ("rule", "blank", "none")
+CLOSE = ("blank", "rule", "none")
 
 
 @dataclass(frozen=True)

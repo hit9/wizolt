@@ -59,13 +59,13 @@ async def preview_at(command_loop, row):
 def test_an_unset_or_unknown_look_setting_falls_back_to_the_builtin():
     """A key nobody set, a `transcript` key that is not a table, and a value this build does not
     know all land on the builtin look: the renderer falls back safely whatever the file says."""
-    assert (transcript.thinking(Config()), transcript.close(Config())) == ("collapsed", "rule")
+    assert (transcript.thinking(Config()), transcript.close(Config())) == ("collapsed", "blank")
     assert transcript.thinking(SimpleNamespace()) == "collapsed"  # no `transcript` attribute at all
     assert transcript.thinking(SimpleNamespace(transcript=None)) == "collapsed"
     assert transcript.thinking(SimpleNamespace(transcript="preset:minimal")) == "collapsed"
     assert transcript.thinking(SimpleNamespace(transcript={})) == "collapsed"
     assert transcript.thinking(SimpleNamespace(transcript={"thinking": "loud"})) == "collapsed"
-    assert transcript.close(SimpleNamespace(transcript={"close": "dash"})) == "rule"
+    assert transcript.close(SimpleNamespace(transcript={"close": "dash"})) == "blank"
 
 
 def test_a_known_look_setting_is_returned_as_it_stands():
@@ -78,28 +78,28 @@ def test_validate_reports_an_unknown_thinking_or_close_and_accepts_the_known_one
     assert transcript.validate({}) == []
     assert transcript.validate({"thinking": "hidden", "close": "none"}) == []
     assert transcript.validate({"thinking": "loud"}) == ["transcript.thinking: unknown value 'loud'; choose from expanded, collapsed, hidden"]
-    assert transcript.validate({"close": "dash"}) == ["transcript.close: unknown value 'dash'; choose from rule, blank, none"]
+    assert transcript.validate({"close": "dash"}) == ["transcript.close: unknown value 'dash'; choose from blank, rule, none"]
 
 
 # --- choosing on the tab --------------------------------------------------------------------
 
 
 async def test_space_chooses_both_look_settings_and_enter_saves_them(command_loop):
-    keys = [*move_to("thinking:hidden"), " ", "j", "j", " ", "enter"]  # two rows down is close:blank
+    keys = [*move_to("thinking:hidden"), " ", "j", "j", " ", "enter"]  # two rows down is close:rule
     modal = command_loop.presentation.tui = TranscriptModal(keys)
     result = await theme_command(command_loop, "")
     assert result is not None
-    assert result.splitlines() == ["transcript.thinking: hidden (saved)", "transcript.close: blank (saved)"]
-    assert saved(command_loop) == {"runtime": {"theme": "auto"}, "transcript": {"thinking": "hidden", "close": "blank"}}
+    assert result.splitlines() == ["transcript.thinking: hidden (saved)", "transcript.close: rule (saved)"]
+    assert saved(command_loop) == {"runtime": {"theme": "auto"}, "transcript": {"thinking": "hidden", "close": "rule"}}
     assert Path(command_loop.session.config.path).read_text().startswith("# keep comment")
-    assert command_loop.session.config.transcript == {"thinking": "hidden", "close": "blank"}
+    assert command_loop.session.config.transcript == {"thinking": "hidden", "close": "rule"}
     assert transcript.thinking(command_loop.session.config) == "hidden"
-    assert transcript.close(command_loop.session.config) == "blank"
+    assert transcript.close(command_loop.session.config) == "rule"
     # Both rows carry the chosen mark and the wording of the choice they stand for -- and the
     # values they replaced carry neither any more.
     last = frames(modal)[-1]
-    assert "* hidden" in last and "* a blank line" in last
-    assert "* latest three lines" not in last and "* a full-width line" not in last
+    assert "* hidden" in last and "* a full-width line" in last
+    assert "* latest three lines" not in last and "* a blank line" not in last
 
 
 async def test_enter_without_a_choice_writes_nothing(command_loop):
@@ -119,7 +119,7 @@ async def test_escape_discards_a_chosen_look_setting(command_loop):
     assert any("* nothing" in frame for frame in frames(modal))
     assert saved(command_loop) == {"runtime": {"theme": "auto"}}
     assert command_loop.session.config.transcript == {}
-    assert transcript.close(command_loop.session.config) == "rule"
+    assert transcript.close(command_loop.session.config) == "blank"
 
 
 # --- the sample the tab previews -------------------------------------------------------------

@@ -472,7 +472,7 @@ def _finish_display(
             children.append(LogLine("", rows[0], LogRole.SHELL_OUTPUT, LogEdge.BRANCH))
             children.extend(LogLine("", line, LogRole.SHELL_OUTPUT, LogEdge.CONTINUE) for line in rows[1:])
             if elided:
-                closing = " · ".join(part for part in (f"… +{elided} more lines · Ctrl-O for more", citation) if part)
+                closing = " · ".join(part for part in (f"+{elided} {'line' if elided == 1 else 'lines'} · Ctrl-O", citation) if part)
                 children.append(LogLine("", closing, LogRole.SHELL_OUTPUT, LogEdge.END))
             else:
                 # Nothing was dropped: the output's own last row closes the block, citing the key.

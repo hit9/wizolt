@@ -368,12 +368,14 @@ async def test_resumed_history_follows_a_tool_run_divider_switched_after_it(tmp_
     divider saved afterwards reaches it on the next redraw, like the record format does."""
     s, replay = _replayed_silent_run(tmp_path)
     rule = "─" * 80
+    default = replay()
+    s.config.transcript = {"close": "rule"}
     ruled = replay()
     assert ruled.count(rule) == 1 and "f8.py" in ruled and "done" in ruled
 
     # `blank` is the rule's gap above it alone; `none` draws nothing in its place.
     s.config.transcript = {"close": "blank"}
-    assert replay() == ruled.replace(rule + "\n\n", "")
+    assert replay() == default == ruled.replace(rule + "\n\n", "")
     s.config.transcript = {"close": "none"}
     assert replay() == ruled.replace("\n" + rule + "\n\n", "")
 

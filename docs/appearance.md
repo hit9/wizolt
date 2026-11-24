@@ -198,9 +198,11 @@ screen in it, except calls a plugin reshaped.
 ```text
 standard
 
-  ● Bash  rg -n export_rows src
-    src/jobs/export.rs:42:  export_rows(&pool, &cfg);
-    … +2 more lines · Ctrl-O for more
+  Bash  rg -n export_rows src → tr.12
+    ├ src/db/rows.rs:140:     rows.push(row);
+    │ src/db/rows.rs:201:     };
+    │ src/db/rows.rs:204: }
+    └ +2 lines · Ctrl-O
 
 minimal
 
@@ -212,7 +214,7 @@ minimal
 in place. Choose `expanded` for the latest three lines or `hidden` for the phase label alone.
 
 **Tool-run divider** decides what closes a long run of tool calls the agent never talks over: a
-full-width line (the default), a blank line, or nothing. Saving it redraws the dividers already on
+blank line (the default), a full-width line, or nothing. Saving it redraws the dividers already on
 screen, in a resumed session too.
 
 Press **f** on a record format to see what it stands for and **e** to write your own. Each line of a

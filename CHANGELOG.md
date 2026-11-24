@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.77.23 - 2026-11-24
+
+- Separate long runs of silent tools with one blank line by default. Shorten truncated Bash output footers while keeping the omitted count and Ctrl-O shortcut.
+
 ## 0.77.22 - 2026-11-24
 
 - Brighten dark-theme command accents, Bash output, reasoning previews and status segments. Give Light stronger colored ink on pale backgrounds.
