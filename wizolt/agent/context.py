@@ -188,7 +188,7 @@ class ContextManager:
                 delivered=True,
             )
         )
-        if tokens >= self.request_token_budget():
+        if self.calibrated(tokens) >= self.request_token_budget():
             raise ModelError("Plugin context composition does not fit the context budget")
         self.update_percent(composed, tools, tokens=tokens)  # The status bar shows what is sent.
         # What this request sent ahead of the conversation, keyed by the plain header it replaced:

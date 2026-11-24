@@ -1,13 +1,16 @@
 """The bytes/4 estimate calibrates itself against provider-reported prompt tokens."""
 
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
 from agent_harness import session_with_provider
+from model_harness import _MockClientFactory
 
 from wizolt.agent.engine import Agent
 from wizolt.base import Billing
+from wizolt.config import ProviderConfig
 from wizolt.model import ModelClient
 from wizolt.session.codec import SessionSnapshotCodec
 
@@ -137,3 +140,33 @@ async def test_compaction_fires_on_the_calibrated_reading(tmp_path):
         s.calibrate_context_estimate(160_000)
     await agent.prepare_request([])
     assert s.state.compaction_count == 1
+
+
+def test_a_rerouted_request_does_not_teach_the_factor(tmp_path):
+    """A `model.request` interceptor may send another provider; the anchor and the key were
+    estimated for the configured route, so that report counts a different tokenizer."""
+    s = session_with_provider(tmp_path)
+    s.state.context_tokens = 100_000
+    other = ProviderConfig(model="another-model", url="http://test", key="sk-test")
+    ModelClient._record_usage(SimpleNamespace(session=s), SimpleNamespace(prompt_tokens=120_000, completion_tokens=1), provider=other)
+    assert s.state.context_factor == 1.0
+    # The configured route still calibrates normally.
+    ModelClient._record_usage(SimpleNamespace(session=s), SimpleNamespace(prompt_tokens=120_000, completion_tokens=1), provider=s.config.provider)
+    assert s.state.context_factor == pytest.approx(1.1, abs=1e-4)
+
+
+async def test_the_wire_forwards_the_sent_route_to_calibration(tmp_path, monkeypatch):
+    """Locks the wire -> _record_usage forwarding the guard depends on: a report from a rerouted
+    request must not teach the factor, while the configured route still calibrates."""
+    s = session_with_provider(tmp_path)
+    s.config.provider.api = "chat"
+    alt = replace(s.config.provider, model="gpt-4o")
+    body = {"choices": [{"message": {"role": "assistant", "content": "hi"}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 120_000, "completion_tokens": 1}}
+    model = ModelClient(s)
+    monkeypatch.setattr(model, "client", _MockClientFactory([(200, body), (200, body)]))
+    s.state.context_tokens = 100_000
+    await model.api_request([{"role": "user", "content": "hi"}], [], allow_stream=False, provider=alt)
+    assert s.state.context_factor == 1.0
+    assert s.state.context_factor_for == ""
+    await model.api_request([{"role": "user", "content": "hi"}], [], allow_stream=False, provider=s.config.provider)
+    assert s.state.context_factor == pytest.approx(1.1, abs=1e-4)

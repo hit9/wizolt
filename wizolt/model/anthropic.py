@@ -462,7 +462,7 @@ class AnthropicWire:
         else:
             result = await self._client.call_client(client, lambda: client.messages.create(**params), response_timeout=response_timeout)
             streamed = False
-        self._client._record_usage(self._client.message_field(result, "usage"), billing=billing)
+        self._client._record_usage(self._client.message_field(result, "usage"), billing=billing, provider=provider)
         assistant, calls, content = self.result(result, streamed)
         assistant[PROVIDER_ORIGIN_KEY] = self._client.provider_origin(provider)
         return assistant, calls, content

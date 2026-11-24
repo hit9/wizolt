@@ -39,6 +39,8 @@ async def test_agent_corrects_textual_tool_call_with_a_committed_message(tmp_pat
 
         async def request(self, messages, tools=None, *, reason="normal"):
             self.requests.append((messages, tools))
+            if reason == "tool_correction":
+                self.anchor_at_correction = s.state.context_tokens
             if len(self.requests) == 1:
                 return {"role": "assistant", "content": pseudo}, [], pseudo
             return {"role": "assistant", "content": "done"}, [], "done"
@@ -53,6 +55,8 @@ async def test_agent_corrects_textual_tool_call_with_a_committed_message(tmp_pat
     correction = correction_messages[-1]
     assert correction["role"] == "user"
     assert correction["content"] == Agent.tool_call_correction("Bash")
+    # The raw anchor was refreshed to the corrected payload that was sent, not the pre-correction base.
+    assert agent.model.anchor_at_correction == agent.context.request_tokens(correction_messages, agent.model.requests[1][1])
     assert "secret command" not in correction["content"]
     # Sent means durable: the correction is a real turn message, not a request-local one.
     assert [message["role"] for message in s.messages] == ["user", "user", "assistant"]

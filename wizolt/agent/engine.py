@@ -509,6 +509,10 @@ class Agent:
             turn_messages.append(correction)
             await self.checkpoint_turn(turn_messages, transcript_messages)
             correction_messages = [*base_messages, *corrections]
+            # The corrections joined the payload after request_step measured the base, so refresh
+            # the raw anchor to what is actually sent; otherwise the report pairs against a stale
+            # estimate and teaches the calibration factor a biased ratio.
+            self.context.update_percent(correction_messages, tools)
             while True:
                 try:
                     assistant, tool_calls, content = await self.model.request(correction_messages, tools, reason="tool_correction")

@@ -228,6 +228,20 @@ def test_compaction_parts_for_uses_last_fixed_window(tmp_path):
     assert [message["content"] for message in recent] == [f"m{index}" for index in range(2, 10)]
 
 
+def test_keep_start_tail_bound_reads_through_the_calibration_factor(tmp_path):
+    # The kept-tail size bound exists so a few huge messages cannot leave the request over budget;
+    # it must measure through the learned factor, or a calibrated payload keeps twice the share.
+    s = session(tmp_path)
+    s.settings.max_context_tokens = 40_000
+    messages = [{"role": "assistant", "content": "x" * 4000} for _ in range(10)]
+    start_raw = compaction.Compactor(ContextManager(s), _StubModel()).keep_start(messages, None)
+    s.state.context_factor = 2.0
+    s.state.context_factor_for = f"{s.config.provider.api}/{s.config.provider.model}"
+    start_calibrated = compaction.Compactor(ContextManager(s), _StubModel()).keep_start(messages, None)
+    # A higher start keeps a shorter tail: the calibrated bound collapses it sooner.
+    assert start_raw < start_calibrated <= len(messages)
+
+
 async def test_prepare_messages_skips_compaction_when_context_under_budget(tmp_path):
     s = session(tmp_path)
     s.settings.max_context_tokens = 999_999

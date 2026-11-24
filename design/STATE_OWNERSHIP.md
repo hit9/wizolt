@@ -50,7 +50,8 @@ Every instance field is classified below. Class constants contain policy, not ag
 | `_lease`, `_lease_borrowed`, `_ownership_released`, `_active_runs` | The capability is shared within the family; borrow/release/run accounting is local. A child cannot release its owner's lease. |
 
 `AgentState` has durable `goal`, `plan`, `known`, `check`, `summary`, `name`, `name_source`,
-`compaction_count`, `round_count`, `last_turn_status` and `last_turn_error`. The remaining fields
+`compaction_count`, `round_count`, `last_turn_status`, `last_turn_error`, `context_factor` and
+`context_factor_for` (the estimate calibration, keyed by wire api/model). The remaining fields
 are local runtime state: `context_percent`, `context_tokens`, `turn_step`, `turn_messages`,
 `current_model_call_started_at`, `manual_model_retry_requested`, `model_retry_count`,
 `current_model_attempt`, `model_retry_reason`, `model_retry_until`, `awaiting_input`,

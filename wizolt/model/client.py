@@ -559,7 +559,7 @@ class ModelClient:
             f"the input exceeded the model's context window. Check provider.max_tokens and runtime.max_context_tokens."
         )
 
-    def _record_usage(self, usage: Any, billing: Billing = Billing.MAIN) -> None:
+    def _record_usage(self, usage: Any, billing: Billing = Billing.MAIN, *, provider: ProviderConfig | None = None) -> None:
         """Add a completed request to session usage, keeping the budget it was prepared against so the
         status fill uses the request-time denominator instead of today's configuration.
 
@@ -573,8 +573,13 @@ class ModelClient:
         counter.add(usage, self.session.request_token_budget(), touch_last=billing != Billing.VISION)
         # Only a main request pairs with the turn estimate the status anchor holds; a summary or
         # vision request measured a different payload and would teach the factor the wrong ratio.
+        # A rerouted request (a `model.request` interceptor changed the provider) was estimated and
+        # keyed for the configured route, so its report counts another model's tokenizer: skip it.
         if billing == Billing.MAIN:
-            self.session.calibrate_context_estimate(counter.last_prompt_tokens)
+            config = self.session.config.provider
+            sent = provider if provider is not None else config
+            if (sent.api, sent.model) == (config.api, config.model):
+                self.session.calibrate_context_estimate(counter.last_prompt_tokens)
 
     def wire(self, provider: ProviderConfig) -> WireProtocol:
         """The adapter for a provider's wire api, selected once per request.

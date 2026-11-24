@@ -68,7 +68,8 @@ class ContextReading:
 
     `used`/`budget` are the provider's report of the last request when there is one (`reported`),
     else the session's estimate -- the statusbar's reading. `parts` estimate the next request
-    locally; they are a different measurement and are never scaled to match `used`."""
+    locally, scaled by the learned reported-to-estimate factor; they approximate `used` but are
+    not forced to equal it."""
 
     used: int
     budget: int

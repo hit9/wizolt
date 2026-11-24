@@ -326,7 +326,7 @@ class ChatWire:
                 raise ModelError("chat completion response carried no choices")
             message = choices[0].message
             finish_reason = str(self._client.message_field(choices[0], "finish_reason") or "")
-        self._client._record_usage(usage, billing=billing)
+        self._client._record_usage(usage, billing=billing, provider=provider)
         assistant = self._client.assistant_message(message)
         calls = self._client.tool_calls(message)
         content = str(self._client.message_field(message, "content") or "")

@@ -628,7 +628,7 @@ class Compactor:
         start = len(messages)
         while start > 0 and len(messages) - start < limit:
             # One message is always kept whatever its size; the bound only stops the tail growing.
-            if start < len(messages) and self.ctx.request_tokens(messages[start - 1 :]) > share:
+            if start < len(messages) and self.ctx.calibrated(self.ctx.request_tokens(messages[start - 1 :])) > share:
                 break
             start -= 1
         return self.safe_cut(messages, start)
