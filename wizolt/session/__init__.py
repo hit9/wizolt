@@ -201,7 +201,7 @@ class Session:
         self.images = ImageInputs(self)
         self.image_route = ImageRoute(self)
         if not self.uid:
-            self.uid = datetime.now().strftime("%Y%m%d%H%M%S") + "-" + str(uuid.uuid4())[:12]  # noqa: DTZ005 - IDs intentionally use local wall time.
+            self.uid = datetime.now().strftime("%Y%m%d%H%M%S") + "-" + str(uuid.uuid4())[:12]  # IDs intentionally use local wall time.
         if self.system_info is None:
             self.system_info = SystemInfo.detect(self.cwd, self.config.data_dir)
         self.apply_provider_overrides()

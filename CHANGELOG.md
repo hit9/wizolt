@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## 0.79.1 - 2026-11-24
+
+- Remove an unused `noqa: DTZ005` directive on the session uid line: ruff 0.17.5 enables RUF100 by default and DTZ005 is not in the selected rule set, so the directive was flagged. The uid still uses local wall time; no behavior change.
 - Refresh the performance reference for 0.79.0 on the unchanged measurement environment: no attributable regression and identical output digests; a reverse-order repeat separates shared-host subprocess/filesystem noise from the code changes.
 
 ## 0.79.0 - 2026-11-24
