@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Show the idle starfield and its Input preview in custom themes that use ANSI or terminal-default colors.
 - Give the Input tab more room for prompt choices and show the starfield above and below the sample prompt.
 - The starfield shares the existing idle refresh timer. In a 100×30 PTY, median time to the first prompt was 104.7 ms before the starfield, 108.5 ms with the original field, and 107.2 ms with the shared timer. [Startup measurements](https://github.com/hit9/wizolt/blob/a5377ced/benchmarks/results/linux-arm64-py314-starfield-frame.json)
 - Right-align background compaction progress and readiness in the status bar.

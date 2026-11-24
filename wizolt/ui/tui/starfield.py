@@ -44,7 +44,7 @@ def _rgb(hex_color: str) -> tuple[int, int, int] | None:
 class StarfieldControl(UIControl):
     """Paint a deterministic twinkling dot field over the blank cells of one background row band.
 
-    `fg_fn`/`bg_fn` supply the foreground and background hex colors to blend between; `y_offset`
+    `fg_fn`/`bg_fn` supply the theme foreground and background colors; `y_offset`
     distinguishes stacked rows so they do not share a pattern; `reserved_fn` is the width of the
     prompt/draft prefix to keep clear on the input row; `visibility_fn` fades the whole field out.
     """
@@ -71,12 +71,9 @@ class StarfieldControl(UIControl):
             return UIContent(get_line=lambda _i: [("", " " * width)], line_count=height)
         now = time.monotonic()
         visibility = self.visibility_fn()
-        fg = _rgb(self.fg_fn())
+        foreground = self.fg_fn()
+        fg = _rgb(foreground)
         bg = _rgb(self.bg_fn())
-        # A theme may name colors rather than give hex; without two RGB endpoints there is nothing
-        # to blend, so leave the background plain rather than risk the render.
-        if fg is None or bg is None:
-            return UIContent(get_line=lambda _i: [("", " " * width)], line_count=height)
         reserved = self.reserved_fn()
         lines: list[StyleAndTextTuples] = []
         for y in range(height):
@@ -94,11 +91,16 @@ class StarfieldControl(UIControl):
                 if brightness < 0.04:
                     row.append(("", " "))
                     continue
-                r = round(fg[0] * brightness + bg[0] * (1 - brightness))
-                g = round(fg[1] * brightness + bg[1] * (1 - brightness))
-                b = round(fg[2] * brightness + bg[2] * (1 - brightness))
+                if fg is None or bg is None:
+                    # The terminal owns its palette. Use its foreground and intensity levels.
+                    style = f"fg:{foreground}" if brightness > 0.6 else f"fg:{foreground} dim"
+                else:
+                    r = round(fg[0] * brightness + bg[0] * (1 - brightness))
+                    g = round(fg[1] * brightness + bg[1] * (1 - brightness))
+                    b = round(fg[2] * brightness + bg[2] * (1 - brightness))
+                    style = f"fg:#{r:02x}{g:02x}{b:02x}"
                 # A few dots flare into a star glyph at their brightest, as an accent.
                 glyph = "✦" if h % 13 == 0 and brightness > 0.6 else DOTS[h // 161 % 8]
-                row.append((f"fg:#{r:02x}{g:02x}{b:02x}", glyph))
+                row.append((style, glyph))
             lines.append(row)
         return UIContent(get_line=lambda i: lines[i], line_count=height)

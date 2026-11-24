@@ -2,6 +2,9 @@
 
 from types import SimpleNamespace
 
+import pytest
+from prompt_toolkit.styles import Style
+
 from wizolt.ui.tui import starfield
 from wizolt.ui.tui.app import InputMode, TuiApp
 from wizolt.ui.tui.starfield import StarfieldControl
@@ -26,6 +29,21 @@ def test_control_paints_fixed_braille_dots_and_masks_reserved(monkeypatch):
     assert all(style.startswith("fg:#") for style, _ in row if style)
     # Deterministic: the same instant paints the same cells.
     assert _ctl(reserved_fn=lambda: 10).create_content(60, 1).get_line(0) == row
+
+
+@pytest.mark.parametrize(("fg", "bg"), [("ansicyan", "#222222"), ("#abcdee", "default"), ("default", "ansiblack")])
+def test_terminal_palette_twinkles_in_the_theme_foreground(monkeypatch, fg, bg):
+    now, visibility = 1000.0, 1.0
+    monkeypatch.setattr(starfield, "time", SimpleNamespace(monotonic=lambda: now))
+    field = StarfieldControl(lambda: fg, lambda: bg, visibility_fn=lambda: visibility)
+    style = Style.from_dict({})
+    first = field.create_content(100, 1).get_line(0)
+    dots = [style.get_attrs_for_style_str(s) for s, glyph in first if glyph.strip()]
+    assert dots and all(attrs.color == fg.removeprefix("#") for attrs in dots)
+    now += 2
+    assert _row_text(field.create_content(100, 1).get_line(0)) != _row_text(first)
+    visibility = 0
+    assert not _row_text(field.create_content(100, 1).get_line(0)).strip()
 
 
 def test_control_blank_when_inactive():
