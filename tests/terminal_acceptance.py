@@ -11,6 +11,7 @@ import pytest
 from prompt_toolkit.utils import get_cwidth
 
 from wizolt.config import ConfigFile
+from wizolt.ui.tui.starfield import DOTS
 
 WIDE, NARROW = 100, 62
 TALL, SHORT = 30, 18
@@ -390,7 +391,7 @@ def test_cli_startup_banner_survives_growing_and_shrinking_pane(pane):
     while "starting…" in "\n".join(pane.capture()):
         assert time.monotonic() < deadline, "CLI never finished starting"
         time.sleep(0.05)
-    _settled_capture(pane)
+    _settled_capture(pane, idle_prompt=True)
     pane.send("/agents")
     deadline = time.monotonic() + 15
     while "(current)" not in pane.visible():
@@ -468,14 +469,14 @@ def test_cli_agents_switch_rebuilds_only_selected_transcript(pane):
         visible_with("[agents 2 · run 0]")
         for width, height in ((62, 18), (100, 30)):
             pane.resize(width, height)
-            _settled_capture(pane)
+            _settled_capture(pane, idle_prompt=True)
             visible = visible_with("[reader] [yolo]")
             assert "CHILD-TASK" in "\n".join(pane.capture()), visible
         pane.send("/status")
         visible_with("Overview")
         visible_with("completed")
         pane.keys("Escape")
-        _settled_capture(pane)
+        _settled_capture(pane, idle_prompt=True)
         pane.send("/agents")
         visible_with("Agents")
         pane.keys("Up", "Enter")
@@ -760,19 +761,34 @@ def test_physical_rows_matches_terminal_wide_glyph_and_tab_wrapping(pane, column
     assert lines.index("END") == physical_rows(payload, columns)
 
 
-def _settled_capture(pane, attempts: int = 40) -> list[str]:
+def _idle_frame(lines: list[str]) -> list[str]:
+    # A live idle prompt has two animated padding rows. Preserve the prompt, its position,
+    # and every transcript row, even one containing the same glyphs.
+    frame = lines.copy()
+    for i in reversed(range(len(frame))):
+        if frame[i] == ">" or frame[i].startswith("> "):
+            for j in (i - 1, i + 1):
+                if 0 <= j < len(frame) and not frame[j].strip(" ✦" + "".join(DOTS)):
+                    frame[j] = ""
+            break
+    return frame
+
+
+def _settled_capture(pane, attempts: int = 40, *, idle_prompt: bool = False) -> list[str]:
     """Capture once the pane stops changing.
 
     A fixed pause is a bet on how loaded the machine is; CI runs four workers on two cores and
     loses that bet. Comparing consecutive captures waits for the thing that actually matters.
     """
     previous = pane.capture()
+    previous_frame = _idle_frame(previous) if idle_prompt else previous
     for _ in range(attempts):
         time.sleep(getattr(pane, "settle_interval", 0.15))
         current = pane.capture()
-        if current == previous:
+        frame = _idle_frame(current) if idle_prompt else current
+        if frame == previous_frame:
             return current
-        previous = current
+        previous, previous_frame = current, frame
     capture_path = pane.path / "unstable-capture.txt"
     capture_path.write_text("\n".join(previous))
     raise AssertionError(

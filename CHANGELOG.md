@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep terminal startup and agent-switch acceptance tests from waiting for the idle starfield to expire after a resize or modal closes.
+
 ## 0.79.2 - 2026-11-24
 
 - Refresh the [performance reference](https://github.com/hit9/wizolt/blob/v0.79.2/benchmarks/README.md#0792-release-reference) after merging the idle starfield and status bar updates.

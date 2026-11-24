@@ -184,6 +184,17 @@ def test_capture_requires_a_stable_frame(tmp_path, monkeypatch, stable):
         assert (tmp_path / "unstable-capture.txt").read_text() == "third"
 
 
+def test_idle_capture_accepts_twinkles_only_when_the_rest_of_the_frame_settles(tmp_path, monkeypatch):
+    initial = ["✦", "⠂", "> hint", "  ⠈"]
+    transcript_changed = ["⠁", "  ⠈", "> hint", "✦"]
+    prompt_moved = ["⠁", "", "✦", "> hint", ""]
+    final = ["⠁", "", "", "> hint", "⠂"]
+    frames = iter([initial, transcript_changed, prompt_moved, final])
+    pane = SimpleNamespace(path=tmp_path, capture=lambda: next(frames))
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+    assert _settled_capture(pane, attempts=3, idle_prompt=True) == final
+
+
 @pytest.mark.parametrize("start_zoomed", [False, True], ids=["enlarge", "shrink"])
 @pytest.mark.parametrize("history_rows", [3, 160], ids=["short", "long"])
 def test_running_command_stays_beside_history_across_zoom(pane, start_zoomed, history_rows):
